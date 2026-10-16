@@ -451,23 +451,28 @@ function convertMat(src, chain) {
   m.name = name;
   return (MAT_CACHE[key] = m);
 }
+async function loadGlbText(url) {
+  // The model ships as base64 text because the artifact host only serves text, script, image and media types.
+  const b64 = await (await fetch(url)).text();
+  const bin = Uint8Array.from(atob(b64.trim()), c => c.charCodeAt(0));
+  const gltf = await new GLTFLoader().parseAsync(bin.buffer, './');
+  for (const root of [...gltf.scene.children]) {
+    root.position.set(0, 0, 0);
+    root.traverse(o => {
+      if (o.name && o.name.includes('flame')) o.userData.flame = true;
+      if (o.isMesh) o.material = convertMat(o.material, nodeChain(o));
+    });
+    ASSETS[root.name] = root;
+  }
+  gltf.scene.updateMatrixWorld(true);
+}
 async function loadAssets() {
-  try {
-    // The model ships as base64 text because the artifact host only serves text, script, image and media types.
-    const b64 = await (await fetch('./ringhold_assets.glb.txt')).text();
-    const bin = Uint8Array.from(atob(b64.trim()), c => c.charCodeAt(0));
-    const gltf = await new GLTFLoader().parseAsync(bin.buffer, './');
-    for (const root of [...gltf.scene.children]) {
-      root.position.set(0, 0, 0);
-      root.traverse(o => {
-        if (o.name && o.name.includes('flame')) o.userData.flame = true;
-        if (o.isMesh) o.material = convertMat(o.material, nodeChain(o));
-      });
-      ASSETS[root.name] = root;
-    }
-    gltf.scene.updateMatrixWorld(true);
-    assetsReady = Object.keys(ASSETS).length > 0;
-  } catch (e) { console.warn('Ringhold: Blender assets did not load, using built-in shapes.', e); }
+  try { await loadGlbText('./ringhold_assets.glb.txt'); }
+  catch (e) { console.warn('Ringhold: Blender assets did not load, using built-in shapes.', e); }
+  // Blue King (player 1) and Red King (player 2), modelled in Blender: ringhold_kings.glb.
+  try { await loadGlbText('./ringhold_kings.glb.txt'); }
+  catch (e) { console.warn('Ringhold: king models did not load, using the monarch.', e); }
+  assetsReady = Object.keys(ASSETS).length > 0;
 }
 const asset = name => ASSETS[name] ? ASSETS[name].clone(true) : null;
 function findNode(obj, name) { let r = null; obj.traverse(o => { if (!r && o.name === name) r = o; }); return r; }
@@ -668,6 +673,11 @@ function buildCrown(scale = 1) {
   return g;
 }
 function buildPlayerBody(i) {
+  const kname = i === 0 ? 'king_blue' : 'king_red', king = asset(kname);
+  if (king) {
+    king.userData.crown = findNode(king, kname + '_crown') || new THREE.Object3D();
+    return king;
+  }
   const a = asset('monarch');
   if (a) {
     const robe = new THREE.MeshLambertMaterial({ color: i === 0 ? 0x5c1016 : 0xb8ad98, flatShading: true });
