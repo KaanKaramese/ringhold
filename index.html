@@ -438,15 +438,16 @@ const GEO = {
 const ASSETS = {};
 let assetsReady = false;
 const MAT_CACHE = {};
-const EMISSIVE = { mask: 0x2a2622, coin: 0x4a3608, gold: 0x6a4a10, chest: 0x120a02 };
+const EMISSIVE = { mask: 0x2a2622, coin: 0x4a3608, gold: 0x6a4a10, chest: 0x120a02, k_gold: 0x3a2806 };
 const nodeChain = o => { let s = ''; for (let n = o; n; n = n.parent) s += n.name + '/'; return s; };
 function convertMat(src, chain) {
   const name = src.name || 'mat', ds = chain.includes('banner');
   const key = name + (ds ? ':ds' : '');
   if (MAT_CACHE[key]) return MAT_CACHE[key];
+  // King materials (k_*) keep their painted texture and smooth shading; everything else is flat colour.
   const m = name.startsWith('glow_')
     ? new THREE.MeshBasicMaterial({ color: src.color.clone(), fog: name === 'glow_window' || name === 'glow_glass' })
-    : new THREE.MeshLambertMaterial({ color: src.color.clone(), flatShading: true, emissive: EMISSIVE[name] || 0x000000 });
+    : new THREE.MeshLambertMaterial({ color: src.color.clone(), map: src.map || null, flatShading: !name.startsWith('k_'), emissive: EMISSIVE[name] || 0x000000 });
   if (ds) m.side = THREE.DoubleSide;
   m.name = name;
   return (MAT_CACHE[key] = m);
