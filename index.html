@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Ringhold</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -60,7 +60,9 @@ html, body { height: 100%; margin: 0; background: var(--ink); color: var(--bone)
   radial-gradient(ellipse at 80% 20%, rgba(143,16,22,.28), transparent 55%),
   linear-gradient(180deg, rgba(11,10,12,.86), rgba(11,10,12,.96));
   padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 28px; box-sizing: border-box; }
-.page { max-width: 760px; margin: 0 auto 0 max(0px, 6vw); display: grid; gap: 22px; }
+.page { max-width: 760px; margin: 0 auto 0 max(0px, 6vw); display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; }
+.page > * { min-width: 0; }
+@media (max-width: 560px) { .page { margin-left: 0; } .tag { font-size: 17px; } .rules { font-size: 15px; } }
 h1 { font-family: var(--f-display); font-weight: 400; font-size: clamp(56px, 11vw, 104px); line-height: .9; margin: 0; letter-spacing: .01em; color: var(--bone); text-wrap: balance; }
 h1 span { color: var(--blood-hi); }
 .tag { font-style: italic; font-size: 20px; color: var(--bone-dim); margin: 14px 0 0; max-width: 60ch; }
@@ -90,9 +92,46 @@ kbd { font-family: var(--f-label); font-size: 14px; border: 1px solid rgba(221,2
 .note { color: var(--bone-dim); font-size: 15px; font-style: italic; margin: 0; max-width: 64ch; }
 .stats { font-size: 20px; margin: 0; }
 @media (prefers-reduced-motion: reduce) { .state .warn { animation: none; } }
+
+/* Touch controls: a floating move stick on the left, drag-to-look on the right, thumb buttons bottom right. */
+body { overscroll-behavior: none; }
+#touch { position: fixed; inset: 0; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.stick { position: absolute; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%; border: 1.5px solid rgba(221,211,191,.3); background: rgba(11,10,12,.25); pointer-events: none; opacity: .55; }
+.stick.live { opacity: 1; }
+.stick i { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%; background: rgba(221,211,191,.3); border: 1.5px solid rgba(221,211,191,.6); }
+.stick.sprint i { background: rgba(208,57,43,.55); border-color: var(--blood-hi); }
+.tbtn { position: absolute; width: 62px; height: 62px; padding: 0; border-radius: 50%; display: grid; place-items: center; border: 1.5px solid rgba(221,211,191,.45); background: rgba(11,10,12,.55); color: var(--bone); touch-action: none; -webkit-tap-highlight-color: transparent; }
+.tbtn svg { width: 28px; height: 28px; pointer-events: none; }
+.tbtn.on { background: rgba(143,16,22,.75); border-color: var(--blood-hi); }
+#tUse { width: 86px; height: 86px; right: max(20px, calc(env(safe-area-inset-right, 0px) + 8px)); bottom: calc(26px + env(safe-area-inset-bottom, 0px)); border-color: var(--coin); color: var(--coin); }
+#tUse svg { width: 40px; height: 40px; }
+#tToss { right: max(118px, calc(env(safe-area-inset-right, 0px) + 106px)); bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
+#tFlare { right: max(28px, calc(env(safe-area-inset-right, 0px) + 16px)); bottom: calc(128px + env(safe-area-inset-bottom, 0px)); }
+#tHorn { right: max(104px, calc(env(safe-area-inset-right, 0px) + 92px)); bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
+#tPause { width: 42px; height: 42px; right: max(80px, calc(env(safe-area-inset-right, 0px) + 80px)); top: calc(12px + env(safe-area-inset-top, 0px)); }
+#tPause svg { width: 20px; height: 20px; }
+body.touch .mini { top: calc(76px + env(safe-area-inset-top, 0px)); bottom: auto; width: 104px; height: 104px; }
+body.touch .purse { grid-template-columns: repeat(15, 11px); gap: 2px; }
+body.touch .purse i { width: 11px; height: 11px; }
+body.touch .fuel .bar { width: 90px; }
+body.touch .wheel .opt { pointer-events: auto; width: 54px; height: 54px; }
+body.touch .wheel { transform: translate(-50%, calc(-100% - 26px)); }
+.touch-note { display: none; }
+@media (hover: none) and (pointer: coarse) {
+  #btnCoop { display: none; }
+  .touch-note { display: block; }
+}
 </style>
 
 <canvas id="c" tabindex="0" aria-label="Ringhold game view"></canvas>
+<div id="touch" hidden>
+  <div class="stick" id="tStick"><i></i></div>
+  <button class="tbtn" id="tUse" type="button" aria-label="Drop coins"></button>
+  <button class="tbtn" id="tToss" type="button" aria-label="Throw coins to partner"></button>
+  <button class="tbtn" id="tFlare" type="button" aria-label="Lantern flare"></button>
+  <button class="tbtn" id="tHorn" type="button" aria-label="Rally horn"></button>
+  <button class="tbtn" id="tPause" type="button" aria-label="Pause"></button>
+</div>
 <div id="hud"></div>
 
 <div id="menu" class="sheet">
@@ -147,6 +186,7 @@ kbd { font-family: var(--f-label); font-size: 14px; border: 1px solid rgba(221,2
           </tbody>
         </table>
       </div>
+      <p class="note touch-note">On a phone: your left thumb moves you (push to the edge to run), drag anywhere on the right to look, and hold the coin button to pay. Tap an icon in the build wheel to choose it. Turn the phone sideways for the widest view. Split-screen needs a keyboard or gamepads, so phones play alone.</p>
       <p class="note">Playing alone, a gamepad drives the first crown. Playing together, the first gamepad drives the second crown and a second gamepad can drive the first. Online co-op is not in this build yet; split-screen shares one screen and keyboard. Needs a keyboard and mouse or a gamepad.</p>
     </section>
   </div>
@@ -214,6 +254,9 @@ const ICON = {
   crownBroken: svg('<path d="M3 18l2-10 4 5 3-7 1 3-2 3 3 2-1 4z"/><path d="M15 13l4-5 2 10h-6"/>'),
   lantern: svg('<path d="M9 4h6M10 4V2h4v2"/><path d="M7 7h10l-1 12H8z"/><path d="M12 10v5"/>'),
   ghost: svg('<path d="M6 20V10a6 6 0 0 1 12 0v10l-2-2-2 2-2-2-2 2-2-2z"/><path d="M10 11h.01M14 11h.01"/>'),
+  coinDrop: svg('<circle cx="12" cy="9" r="6"/><path d="M12 6v6M9.5 9h5"/><path d="M6 19h12M9 22h6"/>'),
+  toss: svg('<circle cx="6" cy="16" r="3"/><path d="M8 13c3-6 8-8 13-7"/><path d="M17 3l4 3-4 3"/>'),
+  pause: svg('<path d="M8 5v14M16 5v14"/>'),
   horn: svg('<path d="M3 10v4h3l9 5V5L6 10z"/><path d="M18 9c1.5 1.5 1.5 4.5 0 6"/>'),
 };
 
@@ -261,7 +304,8 @@ const AU = {
 /* ---------------- renderer, scene, post ---------------- */
 const canvas = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
-const PR = Math.min(window.devicePixelRatio || 1, 1.5);
+const COARSE = matchMedia('(pointer: coarse)').matches;
+const PR = Math.min(window.devicePixelRatio || 1, COARSE ? 1 : 1.5);
 renderer.setPixelRatio(PR);
 renderer.autoClear = true;
 
@@ -273,7 +317,7 @@ const sun = new THREE.DirectionalLight(0xe8dcc4, 1); sun.position.set(40, 70, 20
 const moonMat = new THREE.MeshBasicMaterial({ color: 0xe8e0d0, fog: false });
 const moon = new THREE.Mesh(new THREE.SphereGeometry(9, 20, 14), moonMat); moon.position.set(-120, 90, -160); scene.add(moon);
 const LIGHT_POOL = [];
-for (let i = 0; i < 8; i++) { const l = new THREE.PointLight(0xff9a48, 0, 14, 1.5); scene.add(l); LIGHT_POOL.push(l); }
+for (let i = 0; i < (COARSE ? 6 : 8); i++) { const l = new THREE.PointLight(0xff9a48, 0, 14, 1.5); scene.add(l); LIGHT_POOL.push(l); }
 
 const postScene = new THREE.Scene();
 const postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -808,6 +852,61 @@ document.addEventListener('pointerlockerror', () => { dragLook = true; showHint(
 let hintEl = null, hintTimer = 0;
 function showHint() { if (!hintEl) { hintEl = document.createElement('div'); hintEl.className = 'hint'; document.getElementById('hud').appendChild(hintEl); } hintEl.textContent = 'Drag with the mouse to look around'; hintEl.hidden = false; hintTimer = 6; }
 
+/* touch: floating stick (left), drag to look (right), thumb buttons */
+let touchMode = false;
+const TS = { mx: 0, my: 0, lx: 0, ly: 0, use: false, toss: false, flare: false, rally: false, sprint: false };
+const touchEl = document.getElementById('touch'), stickEl = document.getElementById('tStick'), knobEl = stickEl.firstElementChild;
+const STICK_R = 50;
+let stickId = null, stickX0 = 0, stickY0 = 0, lookId = null, lookX = 0, lookY = 0;
+function stickRest() {
+  stickEl.classList.remove('live', 'sprint'); knobEl.style.transform = '';
+  stickEl.style.left = 'calc(max(16px, env(safe-area-inset-left, 0px)) + 84px)'; stickEl.style.top = 'calc(100% - 110px - env(safe-area-inset-bottom, 0px))';
+}
+function showTouch() { touchEl.hidden = !(touchMode && G.mode === 'play'); }
+function setTouchMode(on) { if (touchMode === on) return; touchMode = on; document.body.classList.toggle('touch', on); showTouch(); }
+addEventListener('touchstart', () => setTouchMode(true), { passive: true, capture: true });
+addEventListener('keydown', () => { if (!COARSE) setTouchMode(false); }, { capture: true });
+if (matchMedia('(hover: none) and (pointer: coarse)').matches) setTouchMode(true);
+stickRest();
+touchEl.addEventListener('pointerdown', e => {
+  if (e.target.closest('.tbtn')) return;
+  e.preventDefault(); AU.init();
+  if (e.clientX < innerWidth * 0.45 && stickId === null) {
+    stickId = e.pointerId; stickX0 = e.clientX; stickY0 = e.clientY;
+    stickEl.style.left = stickX0 + 'px'; stickEl.style.top = stickY0 + 'px'; stickEl.classList.add('live');
+  } else if (lookId === null) { lookId = e.pointerId; lookX = e.clientX; lookY = e.clientY; }
+});
+touchEl.addEventListener('pointermove', e => {
+  if (e.pointerId === stickId) {
+    let dx = e.clientX - stickX0, dy = e.clientY - stickY0; const d = Math.hypot(dx, dy);
+    TS.sprint = d > STICK_R * 1.3; stickEl.classList.toggle('sprint', TS.sprint);
+    if (d > STICK_R) { dx *= STICK_R / d; dy *= STICK_R / d; }
+    TS.mx = dx / STICK_R; TS.my = -dy / STICK_R;
+    knobEl.style.transform = `translate(${dx}px, ${dy}px)`;
+  } else if (e.pointerId === lookId) {
+    TS.lx += (e.clientX - lookX) * 0.0058; TS.ly += (e.clientY - lookY) * 0.0058; lookX = e.clientX; lookY = e.clientY;
+  }
+});
+const endPointer = e => {
+  if (e.pointerId === stickId) { stickId = null; TS.mx = TS.my = 0; TS.sprint = false; stickRest(); }
+  if (e.pointerId === lookId) lookId = null;
+};
+['pointerup', 'pointercancel'].forEach(t => touchEl.addEventListener(t, endPointer));
+function holdButton(id, key) {
+  const b = document.getElementById(id);
+  const on = e => { e.preventDefault(); e.stopPropagation(); AU.init(); TS[key] = true; b.classList.add('on'); try { b.setPointerCapture(e.pointerId); } catch (_) {} };
+  const off = () => { TS[key] = false; b.classList.remove('on'); };
+  b.addEventListener('pointerdown', on); ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(t => b.addEventListener(t, off));
+}
+function tapButton(id, key) {
+  const b = document.getElementById(id);
+  b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); AU.init(); TS[key] = true; b.classList.add('on'); setTimeout(() => b.classList.remove('on'), 160); });
+}
+document.getElementById('tUse').innerHTML = ICON.coinDrop; document.getElementById('tToss').innerHTML = ICON.toss; document.getElementById('tFlare').innerHTML = ICON.lantern; document.getElementById('tHorn').innerHTML = ICON.horn; document.getElementById('tPause').innerHTML = ICON.pause;
+holdButton('tUse', 'use'); holdButton('tToss', 'toss'); tapButton('tFlare', 'flare'); tapButton('tHorn', 'rally');
+document.getElementById('tPause').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); pause(); });
+touchEl.addEventListener('contextmenu', e => e.preventDefault());
+
 const DZ = v => Math.abs(v) < 0.18 ? 0 : (v - Math.sign(v) * 0.18) / 0.82;
 const padPrev = {};
 function padButtons(gp, idx) {
@@ -815,6 +914,13 @@ function padButtons(gp, idx) {
   return { held: i => !!now[i], edge: i => !!now[i] && !prev[i] };
 }
 const sources = {
+  touch(inp) {
+    if (!touchMode) return;
+    if (TS.mx || TS.my) { inp.mx = TS.mx; inp.my = TS.my; }
+    inp.lx += TS.lx; inp.ly += TS.ly; TS.lx = 0; TS.ly = 0;
+    inp.sprint ||= TS.sprint; inp.use ||= TS.use; inp.toss ||= TS.toss; inp.flare ||= TS.flare; inp.rally ||= TS.rally;
+    TS.flare = false; TS.rally = false;
+  },
   kbm(inp) {
     const k = c => keys.has(c);
     inp.mx = (k('KeyD') ? 1 : 0) - (k('KeyA') ? 1 : 0); inp.my = (k('KeyW') ? 1 : 0) - (k('KeyS') ? 1 : 0);
@@ -867,6 +973,10 @@ function makePlayer(i, total) {
 
 /* ---------------- HUD ---------------- */
 const hudRoot = document.getElementById('hud');
+hudRoot.addEventListener('pointerdown', e => {
+  const o = e.target.closest('.opt'); if (!o || !touchMode || !G.players[0]) return;
+  e.preventDefault(); e.stopPropagation(); G.players[0].sel = +o.dataset.i;
+});
 function makeHud(p) {
   const el = document.createElement('div'); el.className = 'vh';
   el.innerHTML = `<div class="tl"><div class="purse">${'<i></i>'.repeat(CFG.cap)}</div><div class="fuel">${ICON.lantern}<div class="bar"><i></i></div></div><div class="state"></div></div>
@@ -895,7 +1005,7 @@ function updateHud(p) {
   if (t && p.state === 'alive') {
     const opts = targetOptions(t);
     wk = t.kind + opts.map(o => o.icon).join() + (opts.length > 1 ? p.sel : '');
-    if (wk !== L.wk) h.wheel.innerHTML = opts.map((o, i) => `<div class="opt ${opts.length === 1 || i === p.sel ? 'sel' : ''}">${ICON[o.icon]}</div>`).join('');
+    if (wk !== L.wk) h.wheel.innerHTML = opts.map((o, i) => `<div class="opt ${opts.length === 1 || i === p.sel ? 'sel' : ''}" data-i="${i}">${ICON[o.icon]}</div>`).join('');
     const o = opts.length > 1 ? opts[p.sel] : opts[0];
     const paid = p.pay && p.pay.key === targetKey(t, o) ? p.pay.paid : 0;
     pk = `${o.cost}|${paid}|${p.coins}`;
@@ -1208,7 +1318,7 @@ function update(dt) {
 function updatePlayer(p, dt) {
   const inp = p.inp;
   Object.assign(inp, new InputState());
-  if (p.src === 'kbm') { sources.kbm(inp, dt); sources.pad(inp, dt, G.coop ? 1 : 0); }
+  if (p.src === 'kbm') { sources.kbm(inp, dt); sources.touch(inp); sources.pad(inp, dt, G.coop ? 1 : 0); }
   else if (p.src === 'kb2') { sources.kb2(inp, dt); sources.pad(inp, dt, 0); }
   if (inp.pause) { pause(); return; }
 
@@ -1627,19 +1737,24 @@ function startGame(coop, seed) {
   menu.hidden = true; endEl.hidden = true;
   G.mode = 'play';
   document.getElementById('btnResume').hidden = false;
-  if (!dragLook) lockPointer();
+  if (touchMode) {
+    TS.use = TS.toss = false;
+    const de = document.documentElement;
+    if (de.requestFullscreen && !document.fullscreenElement) { try { const r = de.requestFullscreen({ navigationUI: 'hide' }); if (r && r.catch) r.catch(() => {}); } catch (e) {} }
+  } else if (!dragLook) lockPointer();
+  showTouch();
   canvas.focus();
 }
 function pause() {
   if (G.mode !== 'play') return;
-  G.mode = 'paused'; menu.hidden = false;
+  G.mode = 'paused'; menu.hidden = false; showTouch();
   for (const p of G.players) refund(p);
   if (document.pointerLockElement) document.exitPointerLock();
 }
-function resume() { if (G.mode !== 'paused') return; menu.hidden = true; G.mode = 'play'; keys.clear(); if (!dragLook) lockPointer(); canvas.focus(); }
+function resume() { if (G.mode !== 'paused') return; menu.hidden = true; G.mode = 'play'; keys.clear(); TS.use = TS.toss = false; showTouch(); if (!dragLook && !touchMode) lockPointer(); canvas.focus(); }
 function endGame(win, why) {
   if (G.mode !== 'play') return;
-  G.mode = 'over';
+  G.mode = 'over'; showTouch();
   if (document.pointerLockElement) document.exitPointerLock();
   win ? AU.win() : AU.lose();
   document.getElementById('endTitle').textContent = win ? 'The island is free' : 'The crowns are lost';
@@ -1653,7 +1768,7 @@ document.getElementById('btnCoop').onclick = () => startGame(true, chosenSeed())
 document.getElementById('btnResume').onclick = resume;
 document.getElementById('btnAgain').onclick = () => startGame(G.coop, G.seed);
 document.getElementById('btnNew').onclick = () => startGame(G.coop, Math.floor(Math.random() * 99999));
-document.getElementById('btnMenu').onclick = () => { endEl.hidden = true; menu.hidden = false; G.mode = 'menu'; };
+document.getElementById('btnMenu').onclick = () => { endEl.hidden = true; menu.hidden = false; G.mode = 'menu'; showTouch(); };
 const $ = id => document.getElementById(id);
 $('optRelaxed').checked = S.relaxed; $('optBob').checked = S.bob; $('optHorror').value = S.horror; $('optFov').value = S.fov; $('optSeed').value = S.seed;
 $('optRelaxed').onchange = e => { S.relaxed = e.target.checked; saveSettings(); };
