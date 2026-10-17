@@ -242,7 +242,13 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
       }`)
     .replace('#include <color_fragment>', `#include <color_fragment>
       float paintN = paintPattern();
+      // navy cloth (the Blue King's colours) is flagged so the post pass keeps it blue under warm light
+      float paintBlue = clamp((diffuseColor.b - max(diffuseColor.r, diffuseColor.g) - 0.008) * 12.0, 0.0, 1.0);
       diffuseColor.rgb *= 0.86 + 0.28 * paintN;`)
+    .replace('#include <opaque_fragment>', `#include <opaque_fragment>
+      #ifdef OPAQUE
+        gl_FragColor.a = 1.0 - 0.5 * paintBlue;
+      #endif`)
     .replace('#include <aomap_fragment>', `#include <aomap_fragment>
       {
         // a few painted tones instead of a smooth falloff; the brush pattern roughens each boundary
@@ -251,10 +257,24 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         float t = l / (l + 0.35);
         float q = t * 4.0 + (paintN - 0.5) * 0.85;
         float tb = (floor(q) + smoothstep(0.35, 0.65, fract(q))) / 4.0;
-        tb = clamp(mix(tb, t, 0.25), 0.0, 0.995);
+        tb = clamp(max(mix(tb, t, 0.25), t * 0.6), 0.0, 0.995);   // darks stay readable, like painted shadow
         reflectedLight.directDiffuse = dd * ((0.35 * tb / (1.0 - tb)) / max(l, 1e-4));
         reflectedLight.indirectDiffuse *= 0.88 + 0.24 * paintN;
-      }`);
+      }
+      #if NUM_POINT_LIGHTS > 0 && defined( PAINT_RIM )
+      {
+        // painted rim light (characters only): a warm, brush-edged highlight on the edges that face a torch
+        float fres = 1.0 - saturate(dot(geometryNormal, geometryViewDir));
+        vec3 rimL = vec3(0.0);
+        IncidentLight rl;
+        for (int i = 0; i < NUM_POINT_LIGHTS; i++) {
+          getPointLightInfo(pointLights[i], geometryPosition, rl);
+          rimL += rl.color * saturate(dot(geometryNormal, rl.direction) + 0.35);
+        }
+        float rimMask = smoothstep(0.56, 0.74, fres + (paintN - 0.5) * 0.3);
+        reflectedLight.directDiffuse += rimL * rimMask * vec3(1.0, 0.7, 0.4) * (0.85 + 0.3 * dot(diffuseColor.rgb, vec3(0.33))) * 0.16;
+      }
+      #endif`);
 }
 
 /* =========================================================================
@@ -425,6 +445,10 @@ const postMat = new THREE.ShaderMaterial({
       float red = clamp((c.r - max(c.g, c.b)) * 2.2 - 0.04, 0.0, 1.0);
       vec3 bone = vec3(0.88, 0.81, 0.68);
       vec3 g = mix(bone * lum * 1.12, c, 0.38 + 0.62 * red);
+      // navy cloth flagged by the paint shader (alpha < 1) stays royal blue, keeping its light and a little warm rim
+      float navy = 1.0 - smoothstep(0.6, 0.95, texture2D(tColor, vUv).a);
+      vec3 navyC = vec3(0.22, 0.34, 0.95); navyC /= dot(navyC, W);
+      g = mix(g, mix(navyC * lum * 1.2, c, 0.12), navy * 0.92);
       float hA = 1.0 - step(1.2, mod(p.x + p.y, 5.0));
       float hB = 1.0 - step(1.2, mod(p.x - p.y, 5.0));
       float hC = 1.0 - step(1.0, mod(p.y, 3.0));
@@ -519,8 +543,9 @@ function convertMat(src, chain) {
   // King materials (k_*) keep their painted texture and smooth shading; everything else is flat colour.
   const m = name.startsWith('glow_')
     ? new THREE.MeshBasicMaterial({ color: src.color.clone(), fog: name === 'glow_window' || name === 'glow_glass' })
-    : new THREE.MeshLambertMaterial({ color: src.color.clone(), map: src.map || null, flatShading: !name.startsWith('k_'), emissive: EMISSIVE[name] || 0x000000 });
+    : new THREE.MeshLambertMaterial({ color: src.color.clone(), map: src.map || null, flatShading: !name.startsWith('k_'), emissive: EMISSIVE[name] || (name.startsWith('k_baked') && name.includes('crown') ? EMISSIVE.k_gold : 0x000000) });
   if (ds) m.side = THREE.DoubleSide;
+  if (name.startsWith('k_')) m.defines = { PAINT_RIM: '' };
   m.name = name;
   return (MAT_CACHE[key] = m);
 }
@@ -745,10 +770,42 @@ function buildCrown(scale = 1) {
   g.scale.setScalar(scale);
   return g;
 }
+// The king's torch: a soft additive glow round the flame and a thin stream of rising sparks.
+let GLOW_TEX = null;
+function glowTexture() {
+  if (GLOW_TEX) return GLOW_TEX;
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  for (let k = 0; k <= 8; k++) { const u = k / 8; gr.addColorStop(u, `rgba(255,${Math.round(210 - 110 * u)},${Math.round(130 - 100 * u)},${(0.5 * Math.exp(-u * u * 5) * (1 - u)).toFixed(3)})`); }   // smooth gaussian falloff
+  g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+  return (GLOW_TEX = new THREE.CanvasTexture(c));
+}
+const SPARKS = 9;
+function addTorchFx(king, kname) {
+  const flame = findNode(king, kname + '_torch_flame'); if (!flame) return;
+  const fx = new THREE.Group(); fx.position.copy(flame.position); flame.parent.add(fx);
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: 0xffa050, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false }));
+  glow.position.y = 0.14; glow.scale.setScalar(0.5); fx.add(glow);
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(SPARKS * 3), 3));
+  const pts = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffd090, size: 0.012, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false }));
+  pts.frustumCulled = false; pts.userData.sparks = Array.from({ length: SPARKS }, (_, k) => ({ ph: k / SPARKS, sp: 0.5 + Math.random() * 0.5, a: Math.random() * TAU, r: 0.02 + Math.random() * 0.05 }));
+  fx.add(pts); fx.userData.glow = glow;
+}
+function updateSparks(pts, t) {
+  const p = pts.geometry.attributes.position;
+  pts.userData.sparks.forEach((s, k) => {
+    const u = (t * s.sp * 0.55 + s.ph) % 1;           // 0 at the flame, 1 at the top of the rise
+    const a = s.a + u * 5;
+    p.setXYZ(k, Math.cos(a) * (s.r + u * 0.06), 0.2 + u * 0.42, Math.sin(a) * (s.r + u * 0.06));
+  });
+  p.needsUpdate = true;
+  pts.material.opacity = 0.9;
+}
 function buildPlayerBody(i) {
   const kname = i === 0 ? 'king_blue' : 'king_red', king = asset(kname);
   if (king) {
     king.userData.crown = findNode(king, kname + '_crown') || new THREE.Object3D();
+    addTorchFx(king, kname);
     return king;
   }
   const a = asset('monarch');
@@ -1710,7 +1767,7 @@ function updateMisc(dt) {
     }
   }
   // keep flame / banner animation
-  G.world.traverse(o => { if (o.userData.flame) { o.scale.y = o.userData.sy || (o.userData.sy = o.scale.y); o.scale.y = o.userData.sy * (0.85 + Math.sin(G.time * 11 + o.id) * 0.15); } if (o.userData.banner) o.rotation.y = Math.sin(G.time * 1.3) * 0.25; });
+  G.world.traverse(o => { if (o.userData.sparks) updateSparks(o, G.time); if (o.userData.glow) o.userData.glow.scale.setScalar(0.48 + Math.sin(G.time * 9 + o.id) * 0.04); if (o.userData.flame) { o.scale.y = o.userData.sy || (o.userData.sy = o.scale.y); o.scale.y = o.userData.sy * (0.85 + Math.sin(G.time * 11 + o.id) * 0.15); } if (o.userData.banner) o.rotation.y = Math.sin(G.time * 1.3) * 0.25; });
   if (hintEl && hintTimer > 0) { hintTimer -= dt; if (hintTimer <= 0) hintEl.hidden = true; }
 }
 
