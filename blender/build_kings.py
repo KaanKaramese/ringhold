@@ -816,4 +816,5 @@ def main():
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(OUT, 'ringhold_kings.blend'), compress=True)
     print('BUILT', glb, os.path.getsize(glb))
 
-main()
+if __name__ == '__main__':   # build_town.py imports the helpers above without building the kings
+    main()

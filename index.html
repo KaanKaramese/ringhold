@@ -567,6 +567,9 @@ async function loadGlbText(url) {
 async function loadAssets() {
   try { await loadGlbText('./ringhold_assets.glb.txt'); }
   catch (e) { console.warn('Ringhold: Blender assets did not load, using built-in shapes.', e); }
+  // The town and valley, painted to match the kings (blender/build_town.py): replaces the assets above by name.
+  try { await loadGlbText('./ringhold_town.glb.txt'); }
+  catch (e) { console.warn('Ringhold: town assets did not load, keeping the older ones.', e); }
   // Blue King (player 1) and Red King (player 2), modelled in Blender: ringhold_kings.glb.
   try { await loadGlbText('./ringhold_kings.glb.txt'); }
   catch (e) { console.warn('Ringhold: king models did not load, using the monarch.', e); }
@@ -593,7 +596,9 @@ function heightAt(x, z) {
   // A long valley running east-west: a gently rolling floor, cliffs on both sides, the far ends closed by rising ground.
   const az = Math.abs(z), ax = Math.abs(x);
   let h = (0.3 * Math.sin(x * 0.21) * Math.cos(z * 0.37) + 0.15 * Math.sin(x * 0.5 + z * 0.33)) * smooth(5, 11, Math.hypot(x, z));
-  h += smooth(10.5, 17, az) * (9 + 4 * Math.sin(x * 0.07 + Math.sign(z) * 1.3) + 2.5 * Math.sin(x * 0.23 + z * 0.2));
+  const cliff = smooth(10.5, 15.5, az);
+  h += cliff * (13 + 4 * Math.sin(x * 0.07 + Math.sign(z) * 1.3) + 2.5 * Math.sin(x * 0.23 + z * 0.2));
+  h += cliff * (1 - cliff) * 4 * (0.9 * Math.sin(x * 0.9 + z * 0.7) + 0.5 * Math.sin(x * 1.7 - z * 1.3));   // rocky ledges on the cliff faces
   h += smooth(CFG.L - 6, CFG.L + 4, ax) * 10;
   return h;
 }
@@ -616,12 +621,12 @@ function mesh(geo, mat, x = 0, y = 0, z = 0, sx = 1, sy = 1, sz = 1) { const m =
 function withMat(obj, mat) { if (mat) obj.traverse(o => { if (o.isMesh) o.material = mat; }); return obj; }
 
 function buildTerrain(rng) {
-  const geo = new THREE.PlaneGeometry(2 * CFG.L + 30, 96, 230, 64).toNonIndexed();
+  const geo = new THREE.PlaneGeometry(2 * CFG.L + 30, 96, 270, 100).toNonIndexed();
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position;
   const col = new Float32Array(pos.count * 3);
   for (let i = 0; i < pos.count; i++) { const x = pos.getX(i), z = pos.getZ(i); pos.setY(i, heightAt(x, z)); }
-  const c = new THREE.Color(), grass = new THREE.Color(0x2e3226), moss = new THREE.Color(0x3c3d2c), rock = new THREE.Color(0x9a9282), mud = new THREE.Color(0x4a3f33), ash = new THREE.Color(0x2a1416);
+  const c = new THREE.Color(), grass = new THREE.Color(0x2e3226), moss = new THREE.Color(0x3c3d2c), rock = new THREE.Color(0x5e5850), mud = new THREE.Color(0x4a3f33), ash = new THREE.Color(0x2a1416);
   for (let i = 0; i < pos.count; i += 3) {
     let x = 0, y = 0, z = 0;
     for (let k = 0; k < 3; k++) { x += pos.getX(i + k) / 3; y += pos.getY(i + k) / 3; z += pos.getZ(i + k) / 3; }
@@ -912,12 +917,21 @@ function buildWorld(seed) {
   const dummy = new THREE.Object3D();
   const live = trees.filter(t => !t.dead), dead = trees.filter(t => t.dead);
   const rockList = [];
-  for (let i = 0; i < 70; i++) { const x = (rng() * 2 - 1) * CFG.L, z = (rng() < 0.5 ? -1 : 1) * (7 + rng() * 7); rockList.push({ x, z, rx: rng() * 0.6, ry: rng() * TAU, s: 0.5 + rng() * 1.2, sy: 0.6 + rng() * 0.6 }); }
+  for (let i = 0; i < 70; i++) { const x = (rng() * 2 - 1) * CFG.L, z = (rng() < 0.5 ? -1 : 1) * (6.5 + rng() * 3.8); rockList.push({ x, z, rx: rng() * 0.6, ry: rng() * TAU, s: 0.5 + rng() * 1.2, sy: 0.6 + rng() * 0.6 }); }
   if (assetsReady) {
     const placeTree = (d, t) => { d.position.set(t.x, heightAt(t.x, t.z) - 0.1, t.z); d.rotation.set(0, t.rot, 0); d.scale.setScalar(t.s); };
     instanceAsset('tree_pine', live, placeTree, world);
     instanceAsset('tree_dead', dead, placeTree, world);
     instanceAsset('rock', rockList, (d, r) => { d.position.set(r.x, heightAt(r.x, r.z) - 0.15, r.z); d.rotation.set(r.rx, r.ry, 0); d.scale.set(r.s, r.s * r.sy, r.s); }, world);
+    // town dressing: lamps along the road, fences at the cliff foot, a small graveyard behind the keep
+    const lamps = [], fences = [], graves = [];
+    for (let x = -78; x <= 78; x += 11) { const z = (Math.round(x / 11) % 2 ? 3.6 : -3.6); if (Math.abs(x) > 6 && clearOf(x, z)) lamps.push({ x, z, r: z > 0 ? Math.PI : 0 }); }
+    for (const side of [-1, 1]) for (let x = 6; x < 80; x += 3.3) for (const z of [-9.8, 9.8]) if (rng() < 0.7 && clearOf(side * x, z)) fences.push({ x: side * x, z, r: (rng() - 0.5) * 0.15 });
+    for (let k = 0; k < 9; k++) { const x = -5 + (k % 5) * 2.4 + (rng() - 0.5) * 0.6, z = -8.6 - Math.floor(k / 5) * 1.9; graves.push({ x, z, r: (rng() - 0.5) * 0.4 }); }
+    const placeProp = (d, t) => { d.position.set(t.x, heightAt(t.x, t.z), t.z); d.rotation.set(0, t.r, 0); d.scale.setScalar(1); };
+    instanceAsset('lamppost', lamps, placeProp, world);
+    instanceAsset('fence', fences, placeProp, world);
+    instanceAsset('grave', graves, placeProp, world);
     G.rng = rng;
     return;
   }
@@ -929,7 +943,7 @@ function buildWorld(seed) {
   dead.forEach((t, i) => { const y = heightAt(t.x, t.z); for (let b = 0; b < 3; b++) { dummy.position.set(t.x + Math.cos(t.rot + b * 2.1) * 0.5 * t.s, y + (2.8 + b * 0.5) * t.s, t.z + Math.sin(t.rot + b * 2.1) * 0.5 * t.s); dummy.rotation.set(Math.sin(t.rot + b * 2.1) * 0.9, 0, -Math.cos(t.rot + b * 2.1) * 0.9); dummy.scale.setScalar(t.s); dummy.updateMatrix(); branches.setMatrixAt(i * 3 + b, dummy.matrix); } });
   world.add(trunks, canopies, branches);
   const rocks = new THREE.InstancedMesh(GEO.rock, M.stoneDark, 40);
-  for (let i = 0; i < 40; i++) { const x = (rng() * 2 - 1) * CFG.L, z = (rng() < 0.5 ? -1 : 1) * (7 + rng() * 7); dummy.position.set(x, heightAt(x, z), z); dummy.rotation.set(rng() * 3, rng() * 3, 0); dummy.scale.set(0.5 + rng() * 1.2, 0.4 + rng() * 0.8, 0.5 + rng() * 1.2); dummy.updateMatrix(); rocks.setMatrixAt(i, dummy.matrix); }
+  for (let i = 0; i < 40; i++) { const x = (rng() * 2 - 1) * CFG.L, z = (rng() < 0.5 ? -1 : 1) * (6.5 + rng() * 3.8); dummy.position.set(x, heightAt(x, z), z); dummy.rotation.set(rng() * 3, rng() * 3, 0); dummy.scale.set(0.5 + rng() * 1.2, 0.4 + rng() * 0.8, 0.5 + rng() * 1.2); dummy.updateMatrix(); rocks.setMatrixAt(i, dummy.matrix); }
   world.add(rocks);
   G.rng = rng;
 }
@@ -944,7 +958,7 @@ function setWallTier(seg, tier) {
 function setPlot(plot, kind, level) {
   if (plot.mesh) G.world.remove(plot.mesh);
   plot.kind = kind; plot.level = level;
-  plot.mesh = buildPlotMesh(kind, level); plot.mesh.position.copy(plot.pos); plot.mesh.rotation.y = Math.atan2(plot.pos.x, plot.pos.z); G.world.add(plot.mesh);
+  plot.mesh = buildPlotMesh(kind, level); plot.mesh.position.copy(plot.pos); plot.mesh.rotation.y = plot.pos.z > 0 ? Math.PI : 0; G.world.add(plot.mesh);   // front faces the road
   if (kind === 'brazier' && !plot.light) plot.light = addLight(plot.pos.clone().add(new THREE.Vector3(0, 2.6, 0)), 11, 0xff9040, 18, 0.2);
   if (kind === 'tower') assignTowers();
 }
@@ -1839,7 +1853,7 @@ function updateGhosts() {
     const t = p.target, opts = targetOptions(t), o = opts.length > 1 ? opts[p.sel] : opts[0];
     const mat = key.endsWith('true') ? M.ghost : M.ghostBad;
     if (t.kind === 'wall') p.ghost = buildWallMesh(t.ref, t.ref.tier + 1, mat);
-    else { p.ghost = buildPlotMesh(o.act === 'house2' ? 'house' : o.act, o.act === 'house2' ? 2 : 1, mat); p.ghost.position.copy(t.ref.pos); p.ghost.rotation.y = Math.atan2(t.ref.pos.x, t.ref.pos.z); p.ghost.scale.setScalar(1.03); }
+    else { p.ghost = buildPlotMesh(o.act === 'house2' ? 'house' : o.act, o.act === 'house2' ? 2 : 1, mat); p.ghost.position.copy(t.ref.pos); p.ghost.rotation.y = t.ref.pos.z > 0 ? Math.PI : 0; p.ghost.scale.setScalar(1.03); }
     G.world.add(p.ghost);
   }
 }
