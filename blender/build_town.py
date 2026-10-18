@@ -46,6 +46,7 @@ def grime(col, n, seed, amt=0.35):
     return col * (1 - amt * (0.6 * vv ** 2 + 0.4 * stain))[..., None]
 
 CLOTH = {'blue': np.array([0.16, 0.19, 0.38]), 'red': np.array([0.46, 0.08, 0.06])}
+if K.FLAT: CLOTH = dict(K.CLOTH)   # so cloth_base recognises them and paints flat heraldic colours
 
 def paint():
     n = 512; T = {}
@@ -508,7 +509,7 @@ def main():
     K.MATS = MATS
     keep(); house('house1', False); house('house2', True); tower(); brazier(); walls(); trees(); portal(); chest(); bowrack(); props()
     bpy.context.view_layer.update()
-    if '--nobake' not in sys.argv: bake_all()
+    if not K.FLAT and '--nobake' not in sys.argv: bake_all()
     for o in bpy.data.objects: o.select_set(True)
     glb = os.path.join(K.OUT, 'ringhold_town.glb')
     kw = dict(filepath=glb, export_format='GLB', use_selection=True, export_apply=True, export_yup=True, export_image_format='JPEG', export_materials='EXPORT')

@@ -209,74 +209,6 @@ body.touch .wheel { transform: translate(-50%, calc(-100% - 26px)); }
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-/* ---------------- painted look ----------------
-   Every Lambert material is shaded like paint: a world-space pattern of brush dabs (fixed to the
-   surface, so it doesn't swim when the camera moves) varies the colour and breaks the light into a
-   few painted tones with ragged, brushy edges. The post pass adds the oil smear, ink and canvas. */
-{
-  const L = THREE.ShaderLib.lambert;
-  L.vertexShader = L.vertexShader
-    .replace('varying vec3 vViewPosition;', 'varying vec3 vViewPosition; varying vec3 vPaintPos; varying vec3 vPaintNrm;')
-    .replace('#include <worldpos_vertex>', `#include <worldpos_vertex>
-      vec4 paintP = vec4(transformed, 1.0); vec3 paintN = objectNormal;
-      #ifdef USE_INSTANCING
-        paintP = instanceMatrix * paintP; paintN = mat3(instanceMatrix) * paintN;
-      #endif
-      vPaintPos = (modelMatrix * paintP).xyz; vPaintNrm = normalize(mat3(modelMatrix) * paintN);`);
-  L.fragmentShader = L.fragmentShader
-    .replace('#include <common>', `#include <common>
-      varying vec3 vPaintPos; varying vec3 vPaintNrm;
-      float pHash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-      float pNoise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
-        return mix(mix(pHash(i), pHash(i + vec2(1.0, 0.0)), f.x), mix(pHash(i + vec2(0.0, 1.0)), pHash(i + vec2(1.0, 1.0)), f.x), f.y); }
-      float strokes(vec2 p){
-        // each patch of the surface gets its own stroke direction, dabs are long and thin
-        float a = pHash(floor(p * 0.9)) * 3.1416;
-        vec2 q = mat2(cos(a), -sin(a), sin(a), cos(a)) * p;
-        return pNoise(q * vec2(6.0, 1.3)) * 0.65 + pNoise(q * vec2(14.0, 2.5)) * 0.35;
-      }
-      float paintPattern(){
-        vec3 w = pow(abs(normalize(vPaintNrm)), vec3(4.0)); w /= (w.x + w.y + w.z);
-        vec3 p = vPaintPos * 1.3;
-        return strokes(p.yz) * w.x + strokes(p.xz + 17.0) * w.y + strokes(p.xy + 41.0) * w.z;
-      }`)
-    .replace('#include <color_fragment>', `#include <color_fragment>
-      float paintN = paintPattern();
-      // navy cloth (the Blue King's colours) is flagged so the post pass keeps it blue under warm light
-      float paintBlue = clamp((diffuseColor.b - max(diffuseColor.r, diffuseColor.g) - 0.008) * 12.0, 0.0, 1.0);
-      diffuseColor.rgb *= 0.86 + 0.28 * paintN;`)
-    .replace('#include <opaque_fragment>', `#include <opaque_fragment>
-      #ifdef OPAQUE
-        gl_FragColor.a = 1.0 - 0.5 * paintBlue;
-      #endif`)
-    .replace('#include <aomap_fragment>', `#include <aomap_fragment>
-      {
-        // a few painted tones instead of a smooth falloff; the brush pattern roughens each boundary
-        vec3 dd = reflectedLight.directDiffuse;
-        float l = max(max(dd.r, dd.g), dd.b);
-        float t = l / (l + 0.35);
-        float q = t * 4.0 + (paintN - 0.5) * 0.85;
-        float tb = (floor(q) + smoothstep(0.35, 0.65, fract(q))) / 4.0;
-        tb = clamp(max(mix(tb, t, 0.25), t * 0.6), 0.0, 0.995);   // darks stay readable, like painted shadow
-        reflectedLight.directDiffuse = dd * ((0.35 * tb / (1.0 - tb)) / max(l, 1e-4));
-        reflectedLight.indirectDiffuse *= 0.88 + 0.24 * paintN;
-      }
-      #if NUM_POINT_LIGHTS > 0 && defined( PAINT_RIM )
-      {
-        // painted rim light (characters only): a warm, brush-edged highlight on the edges that face a torch
-        float fres = 1.0 - saturate(dot(geometryNormal, geometryViewDir));
-        vec3 rimL = vec3(0.0);
-        IncidentLight rl;
-        for (int i = 0; i < NUM_POINT_LIGHTS; i++) {
-          getPointLightInfo(pointLights[i], geometryPosition, rl);
-          rimL += rl.color * saturate(dot(geometryNormal, rl.direction) + 0.35);
-        }
-        float rimMask = smoothstep(0.56, 0.74, fres + (paintN - 0.5) * 0.3);
-        reflectedLight.directDiffuse += rimL * rimMask * vec3(1.0, 0.7, 0.4) * (0.85 + 0.3 * dot(diffuseColor.rgb, vec3(0.33))) * 0.16;
-      }
-      #endif`);
-}
-
 /* =========================================================================
    Ringhold — first playable island.
    Structure: simulation (G + update*) is driven only by per-player InputState
@@ -378,12 +310,35 @@ renderer.setPixelRatio(PR);
 renderer.autoClear = true;
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x000000, 0.02);
-scene.background = new THREE.Color(0x000000);
-const hemi = new THREE.HemisphereLight(0xd8ccb4, 0x2a221c, 1); scene.add(hemi);
-const sun = new THREE.DirectionalLight(0xe8dcc4, 1); sun.position.set(40, 70, 20); scene.add(sun);
-const moonMat = new THREE.MeshBasicMaterial({ color: 0xe8e0d0, fog: false });
-const moon = new THREE.Mesh(new THREE.SphereGeometry(9, 20, 14), moonMat); moon.position.set(-120, 90, -160); scene.add(moon);
+scene.fog = new THREE.FogExp2(0xbfe0f2, 0.006);
+scene.background = new THREE.Color(0xbfe0f2);
+const hemi = new THREE.HemisphereLight(0xd6ecff, 0x6f8f45, 1.3); scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xfff0d2, 2.4); sun.position.set(40, 70, 20); scene.add(sun);
+const moonMat = new THREE.MeshBasicMaterial({ color: 0xeef2ff, fog: false });
+const moon = new THREE.Mesh(new THREE.SphereGeometry(7, 20, 14), moonMat); moon.position.set(-90, 75, -120);
+// Sky dome: a gradient that follows the time of day, a sun disc by day, stars and a moon halo by night.
+const skyMat = new THREE.ShaderMaterial({
+  uniforms: { top: { value: new THREE.Color() }, horizon: { value: new THREE.Color() }, glow: { value: new THREE.Color() },
+    sunDir: { value: new THREE.Vector3(0, 1, 0) }, moonDir: { value: new THREE.Vector3(0, 1, 0) }, night: { value: 0 }, sunVis: { value: 1 } },
+  vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `uniform vec3 top, horizon, glow, sunDir, moonDir; uniform float night, sunVis; varying vec3 vDir;
+    float h3(vec3 p){ return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+    void main(){
+      vec3 d = normalize(vDir); float y = max(d.y, 0.0);
+      vec3 c = mix(horizon, top, pow(y, 0.55));
+      float sd = max(dot(d, sunDir), 0.0);
+      c += glow * pow(sd, 6.0) * 0.6 * (1.0 - y);                                    // warm glow round the sun near the horizon
+      c = mix(c, vec3(1.0, 0.97, 0.86), smoothstep(0.9975, 0.999, sd) * sunVis);    // sun disc
+      float md = max(dot(d, moonDir), 0.0);
+      c += vec3(0.35, 0.42, 0.7) * pow(md, 40.0) * night * 0.8;                      // cold halo round the moon
+      vec3 cell = floor(d * 220.0); float st = step(0.9965, h3(cell));
+      c += st * night * smoothstep(0.05, 0.4, d.y) * (0.5 + 0.5 * h3(cell + 3.0)) * 0.9;
+      gl_FragColor = vec4(c, 1.0);
+    }`,
+  side: THREE.BackSide, depthWrite: false, fog: false,
+});
+const sky = new THREE.Mesh(new THREE.SphereGeometry(190, 32, 16), skyMat); sky.renderOrder = -1; sky.frustumCulled = false;
+scene.add(sky); scene.add(moon);
 const LIGHT_POOL = [];
 for (let i = 0; i < (COARSE ? 6 : 8); i++) { const l = new THREE.PointLight(0xff9a48, 0, 14, 1.5); scene.add(l); LIGHT_POOL.push(l); }
 
@@ -393,80 +348,46 @@ const postMat = new THREE.ShaderMaterial({
   uniforms: {
     tColor: { value: null }, tDepth: { value: null }, res: { value: new THREE.Vector2(1, 1) },
     cnear: { value: 0.05 }, cfar: { value: 220 }, time: { value: 0 }, horror: { value: 0.6 },
-    blood: { value: 0 }, downed: { value: 0 }, hurt: { value: 0 }, dayF: { value: 1 },
+    blood: { value: 0 }, downed: { value: 0 }, hurt: { value: 0 }, night: { value: 0 },
   },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
   fragmentShader: `
-    #define OIL_R ${COARSE ? 1 : 2}
     uniform sampler2D tColor; uniform sampler2D tDepth; uniform vec2 res;
-    uniform float cnear, cfar, time, horror, blood, downed, hurt, dayF;
+    uniform float cnear, cfar, time, horror, blood, downed, hurt, night;
     varying vec2 vUv;
     const vec3 W = vec3(0.2126, 0.7152, 0.0722);
     float linZ(float d){ float z = d * 2.0 - 1.0; return (2.0 * cnear * cfar) / (cfar + cnear - z * (cfar - cnear)); }
     float rand(vec2 c){ return fract(sin(dot(c, vec2(12.9898, 78.233))) * 43758.5453); }
-    float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
-      return mix(mix(rand(i), rand(i + vec2(1.0, 0.0)), f.x), mix(rand(i + vec2(0.0, 1.0)), rand(i + vec2(1.0, 1.0)), f.x), f.y); }
-    // Kuwahara filter: take the mean of the calmest of four neighbourhoods, which flattens the image into paint dabs
-    vec3 oil(vec2 uv, vec2 px){
-      vec3 best = vec3(0.0); float bestV = 1e9;
-      for (int k = 0; k < 4; k++) {
-        vec2 dir = vec2(k == 1 || k == 3 ? 1.0 : -1.0, k >= 2 ? 1.0 : -1.0);
-        vec3 m = vec3(0.0), s2 = vec3(0.0);
-        for (int j = 0; j <= OIL_R; j++) for (int i = 0; i <= OIL_R; i++) {
-          vec3 c = texture2D(tColor, uv + vec2(float(i), float(j)) * dir * px).rgb; m += c; s2 += c * c;
-        }
-        float n = float((OIL_R + 1) * (OIL_R + 1));
-        m /= n; vec3 v = s2 / n - m * m; float vs = v.r + v.g + v.b;
-        if (vs < bestV) { bestV = vs; best = m; }
-      }
-      return best;
-    }
     void main(){
       vec2 px = 1.0 / res;
       vec2 p = gl_FragCoord.xy;
-      vec3 c = oil(vUv, px);
-      // ink lines: sampling distance wobbles so outlines thicken and thin like a brush, and break up here and there
-      vec2 epx = px * (1.0 + 1.3 * vn(p / 23.0));
+      vec3 c = texture2D(tColor, vUv).rgb;
+      // ink outlines from depth: crisp, even lines round every shape, fading out with distance
       float dc = linZ(texture2D(tDepth, vUv).r);
-      float dl = linZ(texture2D(tDepth, vUv - vec2(epx.x, 0.0)).r);
-      float dr = linZ(texture2D(tDepth, vUv + vec2(epx.x, 0.0)).r);
-      float du = linZ(texture2D(tDepth, vUv + vec2(0.0, epx.y)).r);
-      float dd = linZ(texture2D(tDepth, vUv - vec2(0.0, epx.y)).r);
+      float dl = linZ(texture2D(tDepth, vUv - vec2(px.x, 0.0)).r);
+      float dr = linZ(texture2D(tDepth, vUv + vec2(px.x, 0.0)).r);
+      float du = linZ(texture2D(tDepth, vUv + vec2(0.0, px.y)).r);
+      float dd = linZ(texture2D(tDepth, vUv - vec2(0.0, px.y)).r);
       float lap = abs(dl + dr + du + dd - 4.0 * dc) / max(dc, 0.2);
-      float edge = smoothstep(0.03, 0.10, lap) * (1.0 - smoothstep(30.0, 75.0, dc));
-      edge *= 0.55 + 0.6 * vn(p / 7.0);
-      vec3 cl = texture2D(tColor, vUv - vec2(px.x, 0.0)).rgb;
-      vec3 cu = texture2D(tColor, vUv + vec2(0.0, px.y)).rgb;
-      float l0 = dot(c, W);
-      float ce = abs(l0 - dot(cl, W)) + abs(l0 - dot(cu, W));
-      edge = max(edge, smoothstep(0.05, 0.18, ce) * 0.55);
-      c = c / (1.0 + c * 0.45);
+      float edge = smoothstep(0.03, 0.08, lap) * (1.0 - smoothstep(35.0, 90.0, dc));
+      c = c / (1.0 + c * 0.18);
       float lum = dot(c, W);
-      float red = clamp((c.r - max(c.g, c.b)) * 2.2 - 0.04, 0.0, 1.0);
-      vec3 bone = vec3(0.88, 0.81, 0.68);
-      vec3 g = mix(bone * lum * 1.12, c, 0.38 + 0.62 * red);
-      // navy cloth flagged by the paint shader (alpha < 1) stays royal blue, keeping its light and a little warm rim
-      float navy = 1.0 - smoothstep(0.6, 0.95, texture2D(tColor, vUv).a);
-      vec3 navyC = vec3(0.22, 0.34, 0.95); navyC /= dot(navyC, W);
-      g = mix(g, mix(navyC * lum * 1.2, c, 0.12), navy * 0.92);
-      float hA = 1.0 - step(1.2, mod(p.x + p.y, 5.0));
-      float hB = 1.0 - step(1.2, mod(p.x - p.y, 5.0));
-      float hC = 1.0 - step(1.0, mod(p.y, 3.0));
-      float ink = hA * (1.0 - smoothstep(0.10, 0.24, lum));
-      ink = max(ink, hB * (1.0 - smoothstep(0.035, 0.09, lum)));
-      ink = max(ink, hC * (1.0 - smoothstep(0.006, 0.025, lum)) * dayF);
-      g *= 1.0 - ink * 0.45;
-      g = mix(g, g * vec3(1.4, 0.5, 0.45), blood * 0.55);
+      // day: a touch more saturation and warmth, so the valley looks sunny and alive
+      vec3 day = mix(vec3(lum), c, 1.18) * vec3(1.03, 1.0, 0.95);
+      // night: the world drains to cold blue-violet, but firelight, gold and blood keep their colour
+      float warm = clamp((max(c.r, c.g) - c.b) * 3.0 - 0.05, 0.0, 1.0) * smoothstep(0.02, 0.12, lum);
+      vec3 cold = vec3(lum) * vec3(0.55, 0.66, 1.15) * 0.85 + vec3(0.002, 0.003, 0.01);
+      vec3 nightC = mix(cold, c * vec3(1.2, 0.92, 0.68), warm);   // firelight reads orange, even on grass
+      vec3 g = mix(day, nightC, night);
+      g = mix(g, g * vec3(1.5, 0.45, 0.4) + vec3(0.02, 0.0, 0.0), blood * 0.6);
       float gl = dot(g, W);
       g = mix(g, vec3(gl) * vec3(0.7, 0.82, 1.0) + 0.02, downed);
-      g = mix(g, vec3(0.025, 0.018, 0.022), clamp(edge, 0.0, 1.0) * 0.92);
-      // canvas: a faint woven grain under the paint
-      float weave = vn(p * vec2(0.9, 0.18)) * 0.5 + vn(p * vec2(0.18, 0.9)) * 0.5;
-      g *= 0.92 + 0.12 * weave;
+      vec3 inkC = mix(vec3(0.10, 0.07, 0.06), vec3(0.0, 0.0, 0.01), night);
+      g = mix(g, inkC, clamp(edge, 0.0, 1.0) * mix(0.75, 0.9, night));
       g = pow(max(g, 0.0), vec3(1.0 / 2.2));
       vec2 q = vUv - 0.5; float v = dot(q, q);
-      g *= 1.0 - v * (0.5 + horror * 1.5);
-      g += (rand(p + fract(time) * 100.0) - 0.5) * 0.06 * horror;
+      g *= 1.0 - v * mix(0.25, 0.7 + horror * 1.4, night);                    // the dark closes in at night
+      g += (rand(p + fract(time) * 100.0) - 0.5) * 0.05 * horror * night;       // film grain only after dusk
       g = mix(g, vec3(0.55, 0.02, 0.03), hurt * smoothstep(0.04, 0.32, v));
       gl_FragColor = vec4(g, 1.0);
     }`,
@@ -485,8 +406,8 @@ const RTS = [makeRT(4, 4), makeRT(4, 4)];
 /* ---------------- materials & shared geometry ---------------- */
 const lam = (c, o = {}) => new THREE.MeshLambertMaterial({ color: c, ...o });
 const M = {
-  ink: lam(0x100e10), cloak: lam(0x1c1719), bone: lam(0xd9cfbb), boneDim: lam(0x8d8475),
-  wood: lam(0x5a4430), woodDark: lam(0x33271d), stone: lam(0x8a837a), stoneDark: lam(0x5c5650), iron: lam(0x3c3c44),
+  ink: lam(0x100e10), cloak: lam(0x1c1719), bone: lam(0xece2c9), boneDim: lam(0xa79f8f),
+  wood: lam(0xb07a42), woodDark: lam(0x6e4428), stone: lam(0xc4bba8), stoneDark: lam(0x968f82), iron: lam(0x4d515a),
   blood: lam(0x8a0e14), coin: lam(0xd6ad4e, { emissive: 0x4a3608 }), chest: lam(0x6a4a2a, { emissive: 0x120a02 }),
   mask: lam(0xece6da, { emissive: 0x2a2622 }), shadow: lam(0x070607),
   eye: new THREE.MeshBasicMaterial({ color: 0xff2414, fog: false }),
@@ -534,18 +455,17 @@ const GEO = {
 const ASSETS = {};
 let assetsReady = false;
 const MAT_CACHE = {};
-const EMISSIVE = { mask: 0x2a2622, coin: 0x4a3608, gold: 0x6a4a10, chest: 0x120a02, k_gold: 0x3a2806 };
+const EMISSIVE = { mask: 0x2a2622, coin: 0x4a3608, gold: 0x6a4a10, chest: 0x120a02, k_gold: 0x2a1c04 };
 const nodeChain = o => { let s = ''; for (let n = o; n; n = n.parent) s += n.name + '/'; return s; };
 function convertMat(src, chain) {
   const name = src.name || 'mat', ds = chain.includes('banner');
   const key = name + (ds ? ':ds' : '');
   if (MAT_CACHE[key]) return MAT_CACHE[key];
-  // King materials (k_*) keep their painted texture and smooth shading; everything else is flat colour.
+  // Flat low-poly: one solid colour per material, faceted shading. Cloth keeps its texture only as an emblem decal.
   const m = name.startsWith('glow_')
     ? new THREE.MeshBasicMaterial({ color: src.color.clone(), fog: name === 'glow_window' || name === 'glow_glass' })
-    : new THREE.MeshLambertMaterial({ color: src.color.clone(), map: src.map || null, flatShading: !name.startsWith('k_'), emissive: EMISSIVE[name] || (name.startsWith('k_baked') && name.includes('crown') ? EMISSIVE.k_gold : 0x000000) });
+    : new THREE.MeshLambertMaterial({ color: src.color.clone(), map: src.map || null, flatShading: true, emissive: EMISSIVE[name] || 0x000000 });
   if (ds) m.side = THREE.DoubleSide;
-  if (name.startsWith('k_')) m.defines = { PAINT_RIM: '' };
   m.name = name;
   return (MAT_CACHE[key] = m);
 }
@@ -626,7 +546,7 @@ function buildTerrain(rng) {
   const pos = geo.attributes.position;
   const col = new Float32Array(pos.count * 3);
   for (let i = 0; i < pos.count; i++) { const x = pos.getX(i), z = pos.getZ(i); pos.setY(i, heightAt(x, z)); }
-  const c = new THREE.Color(), grass = new THREE.Color(0x2e3226), moss = new THREE.Color(0x3c3d2c), rock = new THREE.Color(0x5e5850), mud = new THREE.Color(0x4a3f33), ash = new THREE.Color(0x2a1416);
+  const c = new THREE.Color(), grass = new THREE.Color(0x5fa64a), moss = new THREE.Color(0x86c25e), rock = new THREE.Color(0x9c9484), mud = new THREE.Color(0xcfae74), ash = new THREE.Color(0x3a2238);
   for (let i = 0; i < pos.count; i += 3) {
     let x = 0, y = 0, z = 0;
     for (let k = 0; k < 3; k++) { x += pos.getX(i + k) / 3; y += pos.getY(i + k) / 3; z += pos.getZ(i + k) / 3; }
@@ -635,7 +555,7 @@ function buildTerrain(rng) {
     c.lerp(rock, Math.max(smooth(2.5, 5.5, y), smooth(10.5, 13, Math.abs(z))));
     c.lerp(mud, (1 - smooth(1.4, 3.0, Math.abs(z - 0.8 * Math.sin(x * 0.045)))) * (1 - smooth(CFG.L - 12, CFG.L - 4, Math.abs(x))));   // the road
     for (const p of G.portals) { const pd = Math.hypot(x - p.pos.x, z - p.pos.z); c.lerp(ash, 1 - smooth(3, 10, pd)); }
-    if (d < 7) c.lerp(new THREE.Color(0x4a4438), 1 - smooth(4, 7, d));
+    if (d < 7) c.lerp(new THREE.Color(0xc9b68e), 1 - smooth(4, 7, d));
     const j = 0.92 + rng() * 0.16;
     for (let k = 0; k < 3; k++) { col[(i + k) * 3] = c.r * j; col[(i + k) * 3 + 1] = c.g * j; col[(i + k) * 3 + 2] = c.b * j; }
   }
@@ -936,7 +856,7 @@ function buildWorld(seed) {
     return;
   }
   const trunks = new THREE.InstancedMesh(GEO.trunk, M.woodDark, trees.length);
-  const canopies = new THREE.InstancedMesh(GEO.canopy, lam(0x1e231c), live.length);
+  const canopies = new THREE.InstancedMesh(GEO.canopy, lam(0x3f9150), live.length);
   const branches = new THREE.InstancedMesh(GEO.branch, M.woodDark, dead.length * 3);
   trees.forEach((t, i) => { const y = heightAt(t.x, t.z); dummy.position.set(t.x, y + 2 * t.s, t.z); dummy.rotation.set(0, t.rot, 0); dummy.scale.setScalar(t.s); dummy.updateMatrix(); trunks.setMatrixAt(i, dummy.matrix); });
   live.forEach((t, i) => { const y = heightAt(t.x, t.z); dummy.position.set(t.x, y + 4.6 * t.s, t.z); dummy.rotation.set(0, t.rot, 0); dummy.scale.setScalar(t.s); dummy.updateMatrix(); canopies.setMatrixAt(i, dummy.matrix); });
@@ -1772,19 +1692,39 @@ function updateMisc(dt) {
 }
 
 /* ---------------- environment & rendering ---------------- */
-const C_DAY_FOG = new THREE.Color(0x8e877a), C_NIGHT_FOG = new THREE.Color(0x020203), C_BLOOD_FOG = new THREE.Color(0x120203), tmpC = new THREE.Color();
+// Day is warm, bright and open; dusk burns orange; night is cold, close and dark; a blood moon turns it red.
+const SKY = {
+  day:   { top: new THREE.Color(0x3f8fe0), hor: new THREE.Color(0xcde9f6), glow: new THREE.Color(0xfff2c0) },
+  dusk:  { top: new THREE.Color(0x3a3d82), hor: new THREE.Color(0xf29a55), glow: new THREE.Color(0xff6a2a) },
+  night: { top: new THREE.Color(0x03050d), hor: new THREE.Color(0x0e1630), glow: new THREE.Color(0x1a2240) },
+  blood: { top: new THREE.Color(0x0c0204), hor: new THREE.Color(0x3a0a0c), glow: new THREE.Color(0x601010) },
+};
+const tmpC = new THREE.Color(), tmpC2 = new THREE.Color(), tmpC3 = new THREE.Color(), C_BLOOD_SUN = new THREE.Color(0xff3a2a);
+function skyMix(key, out, n, tw, bl) {
+  out.copy(SKY.day[key]).lerp(SKY.night[key], smooth(0.15, 0.85, n));
+  out.lerp(SKY.dusk[key], tw * 0.85);
+  return out.lerp(SKY.blood[key], bl);
+}
 function updateEnvironment() {
-  const n = G.nightF, hz = S.horror;
-  tmpC.copy(C_DAY_FOG).lerp(C_NIGHT_FOG, smooth(0, 0.7, n)).lerp(C_BLOOD_FOG, G.bloodF * n);
-  scene.fog.color.copy(tmpC); scene.background.copy(tmpC);
-  scene.fog.density = lerp(0.011, 0.022 + hz * 0.022, smooth(0.1, 1, n));
-  hemi.intensity = lerp(1.7, 0.05 + (1 - hz) * 0.08, smooth(0, 0.8, n));
-  hemi.color.setHex(G.bloodF > 0.5 ? 0x8a3030 : 0xd8ccb4);
-  sun.intensity = lerp(1.6, 0.12 + G.bloodF * 0.25, smooth(0, 0.6, n));
-  sun.color.copy(tmpC.setHex(0xe8dcc4).lerp(new THREE.Color(G.bloodF > 0.3 ? 0xff3020 : 0x8090b0), smooth(0.2, 1, n)));
-  moon.visible = n > 0.3; moonMat.color.setHex(G.bloodF > 0.3 ? 0xd02a20 : 0xe8e0d0);
-  const sa = (G.phase === 'day' ? G.phaseT / CFG.phase.day : 1) * Math.PI;
-  sun.position.set(Math.cos(sa) * 60, 40 + Math.sin(sa) * 40, 30);
+  const n = G.nightF, hz = S.horror, bl = G.bloodF * smooth(0.3, 1, n);
+  const tw = Math.max(0, 1 - Math.abs(n - 0.45) / 0.45) * (G.phase === 'dawn' ? 0.6 : 1);   // twilight strength
+  const u = skyMat.uniforms;
+  skyMix('top', u.top.value, n, tw, bl); skyMix('hor', u.horizon.value, n, tw, bl); skyMix('glow', u.glow.value, n, tw, bl);
+  u.night.value = smooth(0.4, 1, n); u.sunVis.value = 1 - smooth(0.3, 0.6, n);
+  scene.fog.color.copy(u.horizon.value); scene.background.copy(u.horizon.value);
+  scene.fog.density = lerp(0.0055, 0.024 + hz * 0.02, smooth(0.15, 1, n));
+  hemi.color.copy(tmpC.setHex(0xd6ecff).lerp(tmpC2.setHex(0x34467e), smooth(0.1, 0.8, n)).lerp(tmpC3.setHex(0x7a2020), bl));
+  hemi.groundColor.copy(tmpC.setHex(0x6f8f45).lerp(tmpC2.setHex(0x07080e), smooth(0.1, 0.8, n)));
+  hemi.intensity = lerp(1.3, 0.14 + (1 - hz) * 0.14, smooth(0, 0.85, n));
+  // the sun arcs across the sky through the day; after dusk the key light comes from the moon
+  const sa = (G.phase === 'day' ? G.phaseT / CFG.phase.day : G.phase === 'dusk' ? 1 : 0) * 0.8 + 0.1;
+  sun.position.set(Math.cos(sa * Math.PI) * 60, 12 + Math.sin(sa * Math.PI) * 70, 25);
+  u.sunDir.value.copy(sun.position).normalize();
+  if (n > 0.5) sun.position.copy(moon.position);
+  sun.color.copy(tmpC.setHex(0xfff0d2).lerp(tmpC2.setHex(0xff9a50), tw).lerp(tmpC3.setHex(0x8fa6ff), smooth(0.5, 0.9, n)).lerp(C_BLOOD_SUN, bl));
+  sun.intensity = lerp(2.4, 0.22 + bl * 0.25, smooth(0.05, 0.8, n));
+  u.moonDir.value.copy(moon.position).normalize();
+  moon.visible = n > 0.35; moonMat.color.setHex(bl > 0.3 ? 0xff3a2a : 0xeef2ff);
 }
 function assignLightPool(cam) {
   const list = G.lights.filter(L => L.alive);
@@ -1823,18 +1763,19 @@ function render() {
   updateEnvironment();
   const H = innerHeight;
   renderer.setScissorTest(false);
-  renderer.setRenderTarget(null); renderer.setViewport(0, 0, innerWidth, innerHeight); renderer.setClearColor(0x0b0a0c); renderer.clear();
+  renderer.setRenderTarget(null); renderer.setViewport(0, 0, innerWidth, innerHeight); renderer.setClearColor(0x000000); renderer.clear();
   G.players.forEach((p, i) => {
     const v = views[i]; if (!v) return;
     G.players.forEach((q, j) => { q.vm.visible = j === i && q.state === 'alive'; q.body.visible = j !== i && q.state !== 'lost'; if (q.ghost) q.ghost.visible = j === i && !!q.target; });
     assignLightPool(p.cam);
+    sky.position.copy(p.cam.position);
     renderer.setRenderTarget(RTS[i]); renderer.render(scene, p.cam);
     renderer.setRenderTarget(null);
     renderer.setViewport(v.x, v.y, v.w, v.h); renderer.setScissor(v.x, v.y, v.w, v.h); renderer.setScissorTest(true);
     const u = postMat.uniforms;
     u.tColor.value = RTS[i].texture; u.tDepth.value = RTS[i].depthTexture; u.res.value.set(RTS[i].width, RTS[i].height);
     u.cnear.value = p.cam.near; u.cfar.value = p.cam.far; u.time.value = G.time; u.horror.value = S.horror * smooth(0, 1, G.nightF) * 0.8 + 0.15;
-    u.blood.value = G.bloodF * G.nightF; u.downed.value = p.state === 'alive' ? 0 : 1; u.hurt.value = p.hurtT; u.dayF.value = 1;
+    u.blood.value = G.bloodF * G.nightF; u.downed.value = p.state === 'alive' ? 0 : 1; u.hurt.value = p.hurtT; u.night.value = G.nightF;
     renderer.render(postScene, postCam);
     renderer.setScissorTest(false);
   });

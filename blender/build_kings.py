@@ -15,6 +15,31 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = sys.argv[sys.argv.index('--') + 1] if '--' in sys.argv else HERE
 TAU = math.tau
 
+# ---------------------------------------------------------------- art style
+# Flat low-poly (default): every material is one solid, bright colour, faces are shaded flat in the
+# game, nothing is baked. Cloth keeps a texture only as a crisp decal for its emblem. Pass --painted
+# for the older painted-texture look.
+FLAT = '--painted' not in sys.argv
+def hexc(h):
+    """sRGB hex -> sRGB floats (for painted decal images)."""
+    return np.array([((h >> s) & 255) / 255 for s in (16, 8, 0)])
+def lin(c):
+    """sRGB floats -> linear (for material base colours)."""
+    return tuple(x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4 for x in c)
+FLAT_COLORS = {
+    # kings
+    'k_steel': 0x6b7380, 'k_blade': 0xd4d9e0, 'k_mail': 0x545a64, 'k_leather': 0x8a5530, 'k_leather_dk': 0x5a3620,
+    'k_brass': 0xd6a446, 'k_gold': 0xf5c542, 'k_fur': 0xeee3cc, 'k_fur_dk': 0xbfae8c, 'k_wood': 0x8f5c33,
+    'k_iron': 0x3e424a, 'k_visor': 0x16171c, 'k_brigandine': 0x7a4c32, 'k_gem_blue': 0x2f72ff, 'k_gem_red': 0xff3a2e,
+    'k_lining_blue': 0x22357f, 'k_lining_red': 0x7d1a1c,
+    # town and valley
+    't_stone': 0xc4bba8, 't_stone_dk': 0x968f82, 't_cobble': 0xa79f8f, 't_plaster': 0xf4e6c6, 't_timber': 0x6e4428,
+    't_planks': 0xb07a42, 't_slate': 0x4f6f9c, 't_thatch': 0xe3b54f, 't_iron': 0x4d515a, 't_bone': 0xece2c9,
+    't_bark': 0x74502f, 't_needles': 0x3f9150, 't_rock': 0xa39d90, 't_rope': 0xcfa86a, 't_earth': 0x8f6b44,
+}
+FLAT_CLOTH = {'blue': hexc(0x2f55c8), 'red': hexc(0xcc2a2a)}
+FLAT_GOLD = hexc(0xf5c542)
+
 # ---------------------------------------------------------------- textures
 def up(g, n):
     """Tileable smooth upsample of a square grid to n x n."""
@@ -97,6 +122,8 @@ def image(name, rgb):
 GOLD = np.array([0.66, 0.48, 0.20])
 def gold_paint(n, mask, seed, base=GOLD):
     """Worn painted gold: flaked edges, grime, a few bright strokes."""
+    if FLAT:   # crisp solid gold emblem
+        return np.clip((mask - 0.45) * 8, 0, 1), np.broadcast_to(FLAT_GOLD, (n, n, 3)).copy()
     g = fbm(n, 6, 5, seed)
     flake = fbm(n, 24, 3, seed + 1)
     m = mask * np.clip((flake - 0.30) * 6, 0, 1)
@@ -162,6 +189,12 @@ CLOTH = {'blue': np.array([0.16, 0.19, 0.38]), 'red': np.array([0.46, 0.08, 0.06
 EMBLEM = {'blue': 'fleur.png', 'red': 'lion.png'}
 
 def cloth_base(n, color, seed):
+    if FLAT:   # one solid colour; darker requests (linings) keep their ratio to the base cloth
+        for k, c in CLOTH.items():
+            ratio = float(np.mean(color) / np.mean(c))
+            if np.allclose(color / max(ratio, 1e-6), c, atol=0.02):
+                return np.broadcast_to(FLAT_CLOTH[k] * min(ratio, 1.0), (n, n, 3)).copy()
+        return np.broadcast_to(color, (n, n, 3)).copy()
     weave = streaks(n, seed, 128)
     g = fbm(n, 4, 6, seed + 1)
     col = color[None, None, :] * (0.55 + 0.7 * g[..., None]) * (0.9 + 0.2 * weave[..., None])
@@ -169,6 +202,7 @@ def cloth_base(n, color, seed):
 
 def worn_hem(col, n, seed, start=0.72, pale=np.array([0.62, 0.52, 0.36])):
     """Moth-eaten pale blotches gathering toward the bottom edge, as on the concept capes."""
+    if FLAT: return col, np.zeros(col.shape[:2])   # the torn hem geometry is enough
     vv = np.linspace(0, 1, n)[:, None]  # 0 top row, 1 bottom row
     ramp = np.clip((vv - start) / (1 - start), 0, 1)
     spots = fbm(n, 16, 4, seed)
@@ -183,8 +217,9 @@ def paint_king(color_name, seed):
     n = 1024
     col = cloth_base(n, color, seed)
     uu = np.linspace(0, 1, n)[None, :]; vv = np.linspace(0, 1, n)[:, None]
-    col *= (0.55 + 0.45 * np.clip(vv * 3, 0, 1))[..., None]               # shadowed under the fur
-    col *= (1 - 0.35 * np.clip(np.abs(uu - 0.5) * 2 - 0.6, 0, 1) / 0.4)[..., None]  # darker towards the front edges
+    if not FLAT:
+        col *= (0.55 + 0.45 * np.clip(vv * 3, 0, 1))[..., None]               # shadowed under the fur
+        col *= (1 - 0.35 * np.clip(np.abs(uu - 0.5) * 2 - 0.6, 0, 1) / 0.4)[..., None]  # darker towards the front edges
     big = np.zeros((n, n)); stamp(big, em, n // 2, int(n * 0.36), int(n * 0.44), sx=0.85)
     small = np.zeros((n, n))
     for k in range(7):
@@ -200,7 +235,7 @@ def paint_king(color_name, seed):
     n = 512
     col = cloth_base(n, color, seed + 5)
     vv = np.linspace(0, 1, n)[:, None]
-    col *= (0.6 + 0.4 * np.clip(vv * 4, 0, 1))[..., None]
+    if not FLAT: col *= (0.6 + 0.4 * np.clip(vv * 4, 0, 1))[..., None]
     small = np.zeros((n, n))
     for k in range(8):
         stamp(small, em, int((k + 0.5) / 8 * n), int(n * 0.74), int(n * 0.10))
@@ -216,7 +251,7 @@ def paint_king(color_name, seed):
     e = np.zeros((n, n)); stamp(e, em, n // 2, n // 2, int(n * 0.62))
     m, gcol = gold_paint(n, np.maximum(e, (d > 0.80).astype(float)), seed + 9)
     col = col * (1 - m[..., None]) + gcol * m[..., None]
-    col *= (1 - 0.5 * np.clip((d - 0.74) * 20, 0, 1) * np.clip((0.82 - d) * 20, 0, 1))[..., None]
+    if not FLAT: col *= (1 - 0.5 * np.clip((d - 0.74) * 20, 0, 1) * np.clip((0.82 - d) * 20, 0, 1))[..., None]
     T['brooch'] = image('k_brooch_' + color_name, col)
     # banner-style emblem plate for the gem colour on the crown
     return T
@@ -224,6 +259,8 @@ def paint_king(color_name, seed):
 # ---------------------------------------------------------------- materials
 def material(name, tex=None, color=(1, 1, 1)):
     if name in bpy.data.materials: return bpy.data.materials[name]
+    if FLAT and name in FLAT_COLORS:
+        tex, color = None, lin(hexc(FLAT_COLORS[name]))
     m = bpy.data.materials.new(name)
     try: m.use_nodes = True
     except Exception: pass
@@ -803,7 +840,7 @@ def main():
         root.location.x = -0.9 if i == 0 else 0.9
         kings.append(root)
     bpy.context.view_layer.update()
-    if '--nobake' not in sys.argv: bake_all()   # painted wear and occlusion, see bake_painted()
+    if not FLAT and '--nobake' not in sys.argv: bake_all()   # painted wear and occlusion, see bake_painted()
     # export: apply modifiers, kings at origin side by side (the game re-centres each root)
     for o in bpy.data.objects: o.select_set(True)
     glb = os.path.join(OUT, 'ringhold_kings.glb')
