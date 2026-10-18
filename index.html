@@ -42,7 +42,7 @@ html, body { height: 100%; margin: 0; background: var(--ink); color: var(--bone)
 .state .warn { color: var(--blood-hi); animation: pulse 0.8s infinite alternate; }
 @keyframes pulse { to { opacity: .35; } }
 .dial { position: absolute; right: max(14px, env(safe-area-inset-right, 0px)); top: calc(12px + env(safe-area-inset-top, 0px)); width: 56px; height: 56px; }
-.mini { position: absolute; right: max(14px, env(safe-area-inset-right, 0px)); bottom: calc(14px + env(safe-area-inset-bottom, 0px)); width: 150px; height: 150px; opacity: .92; }
+.mini { position: absolute; right: max(14px, env(safe-area-inset-right, 0px)); bottom: calc(14px + env(safe-area-inset-bottom, 0px)); width: 260px; height: 52px; opacity: .92; }
 .cross { position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; border: 1.5px solid rgba(221,211,191,.7); }
 .wheel { position: absolute; left: 50%; top: 50%; transform: translate(-50%, calc(-100% - 22px)); display: flex; gap: 10px; }
 .wheel .opt { width: 46px; height: 46px; display: grid; place-items: center; border-radius: 50%; border: 1.5px solid rgba(221,211,191,.35); background: rgba(11,10,12,.55); color: var(--bone-dim); }
@@ -110,7 +110,7 @@ body { overscroll-behavior: none; }
 #tHorn { right: max(104px, calc(env(safe-area-inset-right, 0px) + 92px)); bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
 #tPause { width: 42px; height: 42px; right: max(80px, calc(env(safe-area-inset-right, 0px) + 80px)); top: calc(12px + env(safe-area-inset-top, 0px)); }
 #tPause svg { width: 20px; height: 20px; }
-body.touch .mini { top: calc(76px + env(safe-area-inset-top, 0px)); bottom: auto; width: 104px; height: 104px; }
+body.touch .mini { top: calc(76px + env(safe-area-inset-top, 0px)); bottom: auto; width: 180px; height: 36px; }
 body.touch .purse { grid-template-columns: repeat(15, 11px); gap: 2px; }
 body.touch .purse i { width: 11px; height: 11px; }
 body.touch .fuel .bar { width: 90px; }
@@ -138,7 +138,7 @@ body.touch .wheel { transform: translate(-50%, calc(-100% - 26px)); }
   <div class="page">
     <div>
       <h1>Ring<span>h</span>old</h1>
-      <p class="tag">Two crowns, one circle. Spend your coins, light the ring, and hold the keep until dawn.</p>
+      <p class="tag">Two crowns, one valley. Spend your coins, raise the walls, and hold the keep until dawn.</p>
     </div>
     <div class="row">
       <button id="btnResume" class="primary" hidden>Resume</button>
@@ -152,8 +152,8 @@ body.touch .wheel { transform: translate(-50%, calc(-100% - 26px)); }
         <label class="check"><input type="checkbox" id="optBob"> Head bob</label>
         <label for="optHorror">Horror intensity <input type="range" id="optHorror" min="0" max="1" step="0.05"></label>
         <label for="optFov">Field of view <input type="range" id="optFov" min="60" max="105" step="1"></label>
-        <label for="optSeed">Island seed
-          <span class="seedrow"><input type="text" id="optSeed" inputmode="numeric" placeholder="random"><button id="btnDaily" type="button">Today's island</button></span>
+        <label for="optSeed">Valley seed
+          <span class="seedrow"><input type="text" id="optSeed" inputmode="numeric" placeholder="random"><button id="btnDaily" type="button">Today's valley</button></span>
         </label>
       </div>
     </section>
@@ -163,9 +163,9 @@ body.touch .wheel { transform: translate(-50%, calc(-100% - 26px)); }
         <li>Coins are your only tool. Look at a stone plot or wall stakes and hold the drop key to pay.</li>
         <li>Plots take a house (coins each dawn), an archer tower or a brazier. Walls upgrade from wood to stone to iron.</li>
         <li>Hire archers at the bow rack beside the keep. Archers only shoot what light reveals.</li>
-        <li>Masklings pour from three portals each night. They steal coins, then crowns. A partner can carry a fallen crown back to the keep before dawn.</li>
+        <li>The kingdom is one long valley. Masklings pour in from the portals at both ends each night. They steal coins, then crowns. A partner can carry a fallen crown back to the keep before dawn.</li>
         <li>Your lantern burns oil at night. Stand near the keep or a brazier to refill it. A flare scares thieves into dropping what they took.</li>
-        <li>Every fifth night the moon turns red. Seal all three portals with coins to free the island.</li>
+        <li>Every fifth night the moon turns red. Seal both portals with coins to free the valley.</li>
       </ul>
     </section>
     <section>
@@ -293,7 +293,7 @@ function mulberry32(s) { return function () { s |= 0; s = s + 0x6D2B79F5 | 0; le
 const hdist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 
 const CFG = {
-  islandR: 66, R1: 14, R2: 28, portalR: 57, eye: 1.65, cap: 15,
+  L: 150, halfW: 11.5, wallX: [14, 32, 54, 80], portalX: 138, eye: 1.65, cap: 15,   // linear valley: keep at x=0, a portal at each end
   phase: { day: 100, dusk: 14, night: 80, dawn: 8 },
   wallCost: [2, 4, 6], wallHp: [0, 10, 20, 34],
   cost: { house: 3, house2: 5, tower: 4, brazier: 2, archer: 2 },
@@ -590,13 +590,12 @@ function instanceAsset(name, list, place, parent) {
 /* ---------------- terrain ---------------- */
 let HILLS = [];
 function heightAt(x, z) {
-  const d = Math.hypot(x, z);
-  let h = 0;
-  for (const b of HILLS) { const dx = x - b.x, dz = z - b.z; h += b.h * Math.exp(-(dx * dx + dz * dz) / (b.r * b.r)); }
-  h += 0.35 * Math.sin(x * 0.21) * Math.cos(z * 0.17) + 0.18 * Math.sin(x * 0.5 + z * 0.33);
-  h *= smooth(5, 11, d);
-  const edge = smooth(CFG.islandR - 7, CFG.islandR + 5, d);
-  return h * (1 - edge) - edge * 3.2;
+  // A long valley running east-west: a gently rolling floor, cliffs on both sides, the far ends closed by rising ground.
+  const az = Math.abs(z), ax = Math.abs(x);
+  let h = (0.3 * Math.sin(x * 0.21) * Math.cos(z * 0.37) + 0.15 * Math.sin(x * 0.5 + z * 0.33)) * smooth(5, 11, Math.hypot(x, z));
+  h += smooth(10.5, 17, az) * (9 + 4 * Math.sin(x * 0.07 + Math.sign(z) * 1.3) + 2.5 * Math.sin(x * 0.23 + z * 0.2));
+  h += smooth(CFG.L - 6, CFG.L + 4, ax) * 10;
+  return h;
 }
 
 /* ---------------- game state ---------------- */
@@ -617,19 +616,19 @@ function mesh(geo, mat, x = 0, y = 0, z = 0, sx = 1, sy = 1, sz = 1) { const m =
 function withMat(obj, mat) { if (mat) obj.traverse(o => { if (o.isMesh) o.material = mat; }); return obj; }
 
 function buildTerrain(rng) {
-  const geo = new THREE.PlaneGeometry(180, 180, 150, 150).toNonIndexed();
+  const geo = new THREE.PlaneGeometry(2 * CFG.L + 30, 96, 230, 64).toNonIndexed();
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position;
   const col = new Float32Array(pos.count * 3);
   for (let i = 0; i < pos.count; i++) { const x = pos.getX(i), z = pos.getZ(i); pos.setY(i, heightAt(x, z)); }
-  const c = new THREE.Color(), grass = new THREE.Color(0x2e3226), moss = new THREE.Color(0x3c3d2c), rock = new THREE.Color(0x9a9282), sand = new THREE.Color(0x6e6450), ash = new THREE.Color(0x2a1416);
+  const c = new THREE.Color(), grass = new THREE.Color(0x2e3226), moss = new THREE.Color(0x3c3d2c), rock = new THREE.Color(0x9a9282), mud = new THREE.Color(0x4a3f33), ash = new THREE.Color(0x2a1416);
   for (let i = 0; i < pos.count; i += 3) {
     let x = 0, y = 0, z = 0;
     for (let k = 0; k < 3; k++) { x += pos.getX(i + k) / 3; y += pos.getY(i + k) / 3; z += pos.getZ(i + k) / 3; }
     const d = Math.hypot(x, z);
     c.copy(grass).lerp(moss, (Math.sin(x * 0.7) * Math.cos(z * 0.6) + 1) * 0.5);
-    c.lerp(rock, smooth(2.5, 5.5, y));
-    c.lerp(sand, smooth(CFG.islandR - 9, CFG.islandR - 4, d));
+    c.lerp(rock, Math.max(smooth(2.5, 5.5, y), smooth(10.5, 13, Math.abs(z))));
+    c.lerp(mud, (1 - smooth(1.4, 3.0, Math.abs(z - 0.8 * Math.sin(x * 0.045)))) * (1 - smooth(CFG.L - 12, CFG.L - 4, Math.abs(x))));   // the road
     for (const p of G.portals) { const pd = Math.hypot(x - p.pos.x, z - p.pos.z); c.lerp(ash, 1 - smooth(3, 10, pd)); }
     if (d < 7) c.lerp(new THREE.Color(0x4a4438), 1 - smooth(4, 7, d));
     const j = 0.92 + rng() * 0.16;
@@ -638,8 +637,7 @@ function buildTerrain(rng) {
   geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
   geo.computeVertexNormals();
   const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
-  const water = new THREE.Mesh(new THREE.CircleGeometry(400, 32), M.water); water.rotation.x = -Math.PI / 2; water.position.y = -1.3;
-  const g = new THREE.Group(); g.add(m, water); return g;
+  const g = new THREE.Group(); g.add(m); return g;
 }
 
 function buildKeep() {
@@ -665,16 +663,10 @@ function buildRecruitPost() {
   for (let i = 0; i < 3; i++) { const b = mesh(new THREE.TorusGeometry(0.55, 0.035, 4, 10, Math.PI), M.bone, -0.5 + i * 0.5, 1.05, 0.08); b.rotation.z = Math.PI / 2; g.add(b); }
   return g;
 }
-function buildWallMesh(seg, tier, mat) {
-  const chord = 2 * seg.R * Math.sin((seg.a1 - seg.a0) / 2) * 0.99;
+function wallPiece(tier, chord, mat) {
+  // One wall section, length along local X, front (local +Z) toward the keep.
   const a = asset(['wall_marker', 'wall_wood', 'wall_stone', 'wall_iron'][tier]);
-  if (a) {
-    a.scale.x = chord / 10.7;
-    withMat(a, mat);
-    const y = Math.min(heightAt(seg.mid.x, seg.mid.z), heightAt(seg.e0.x, seg.e0.z), heightAt(seg.e1.x, seg.e1.z));
-    a.position.set(seg.mid.x, y, seg.mid.z); a.lookAt(0, y, 0);
-    return a;
-  }
+  if (a) { a.scale.x = chord / 10.7; withMat(a, mat); return { obj: a, y: 0 }; }
   const g = new THREE.Group();
   if (tier === 0) {
     for (let i = -1; i <= 1; i++) g.add(mesh(GEO.pebble, M.boneDim, i * chord * 0.38, 0.1, 0, 1, 0.6, 1));
@@ -683,7 +675,7 @@ function buildWallMesh(seg, tier, mat) {
     const n = Math.max(4, Math.floor(chord / 0.42));
     for (let i = 0; i < n; i++) {
       const x = -chord / 2 + (i + 0.5) * chord / n, h = 0.9 + ((i * 37) % 5) * 0.06;
-      const s = mesh(GEO.stake, M.wood, x, 1.1 * h, 0, 1, h, 1); s.rotation.z = ((i * 13) % 7 - 3) * 0.02; g.add(s);
+      const st = mesh(GEO.stake, M.wood, x, 1.1 * h, 0, 1, h, 1); st.rotation.z = ((i * 13) % 7 - 3) * 0.02; g.add(st);
       g.add(mesh(GEO.stakeTip, M.wood, x, 2.6 * h + 0.1, 0));
     }
     g.add(mesh(GEO.box, M.woodDark, 0, 1.4, 0.18, chord, 0.18, 0.12), mesh(GEO.box, M.woodDark, 0, 0.6, 0.18, chord, 0.18, 0.12));
@@ -700,9 +692,19 @@ function buildWallMesh(seg, tier, mat) {
   }
   if (tier >= 2 && !mat) { g.add(mesh(GEO.box, M.ink, 0, 3.4, -0.45, 0.12, 0.9, 0.12)); const f = mesh(GEO.flame, M.fire, 0, 4.0, -0.45, 0.5, 0.6, 0.5); f.userData.flame = true; g.add(f); }
   withMat(g, mat);
-  const y = Math.min(heightAt(seg.mid.x, seg.mid.z), heightAt(seg.e0.x, seg.e0.z), heightAt(seg.e1.x, seg.e1.z));
-  g.position.set(seg.mid.x, y - 0.6, seg.mid.z);
-  g.lookAt(0, y - 0.6, 0);
+  return { obj: g, y: -0.6 };
+}
+function buildWallMesh(seg, tier, mat) {
+  // A wall line crosses the whole valley floor (its ends sink into the cliffs); an unbuilt line is a single marker on the road.
+  const g = new THREE.Group(), x = seg.side * seg.X;
+  const span = 2 * CFG.halfW + 3, pieces = tier === 0 ? 1 : 3, len = tier === 0 ? 4 : span / pieces;
+  for (let k = 0; k < pieces; k++) {
+    const zc = pieces === 1 ? 0 : -span / 2 + (k + 0.5) * len;
+    const { obj, y } = wallPiece(tier, len, mat);
+    const gy = Math.min(heightAt(x, zc - len / 2), heightAt(x, zc), heightAt(x, zc + len / 2));
+    obj.position.set(x, gy + y, zc); obj.rotation.set(0, -seg.side * Math.PI / 2, 0);
+    g.add(obj);
+  }
   return g;
 }
 function buildPlotMesh(kind, level, mat) {
@@ -855,16 +857,13 @@ function buildWorld(seed) {
   Object.assign(G, { enemies: [], archers: [], arrows: [], fly: [], coins: [], crowns: [], chests: [], walls: [], plots: [], portals: [], lights: [], spawnQ: [], fx: [] });
 
   HILLS = [];
-  for (let i = 0; i < 8; i++) { const a = rng() * TAU, r = 17 + rng() * 38; HILLS.push({ x: Math.cos(a) * r, z: Math.sin(a) * r, r: 5 + rng() * 7, h: 1.8 + rng() * 4.2 }); }
-
-  const base = rng() * TAU;
-  for (let i = 0; i < 3; i++) {
-    const a = base + i * TAU / 3 + (rng() - 0.5) * 0.5;
-    const pos = new THREE.Vector3(Math.cos(a) * CFG.portalR, 0, Math.sin(a) * CFG.portalR);
+  for (let i = 0; i < 2; i++) {   // one portal at each end of the valley
+    const side = i === 0 ? -1 : 1;
+    const pos = new THREE.Vector3(side * CFG.portalX, 0, (rng() - 0.5) * 4);
     pos.y = heightAt(pos.x, pos.z);
-    const m = buildPortal(); m.position.copy(pos); m.lookAt(0, pos.y, 0); world.add(m);
+    const m = buildPortal(); m.position.copy(pos); m.lookAt(0, pos.y, pos.z); world.add(m);
     const L = addLight(new THREE.Vector3(pos.x, pos.y + 2.6, pos.z), 6, 0xc01818, 9, 0.3);
-    G.portals.push({ i, angle: angNorm(a), pos, mesh: m, light: L, alive: true, sealing: 0, sealCost: 10, horn: [110, 139, 165][i] });
+    G.portals.push({ i, side, pos, mesh: m, light: L, alive: true, sealing: 0, sealCost: 12, horn: [110, 139][i] });
   }
   world.add(buildTerrain(rng));
 
@@ -875,49 +874,45 @@ function buildWorld(seed) {
   const rp = new THREE.Vector3(0, heightAt(0, 5.6), 5.6);
   G.recruit = { pos: rp, mesh: buildRecruitPost() }; G.recruit.mesh.position.copy(rp); world.add(G.recruit.mesh);
 
-  // wall rings
-  const rings = [{ R: CFG.R1, n: 8, off: 0.2 }, { R: CFG.R2, n: 12, off: 0.05 }];
-  rings.forEach((ring, ri) => {
-    for (let k = 0; k < ring.n; k++) {
-      const a0 = angNorm(ring.off + k * TAU / ring.n), a1 = a0 + TAU / ring.n, am = a0 + TAU / ring.n / 2;
-      const seg = { ring: ri, R: ring.R, a0, a1, span: TAU / ring.n, amid: angNorm(am), tier: 0, hp: 0, mesh: null, light: null,
-        mid: new THREE.Vector3(Math.cos(am) * ring.R, 0, Math.sin(am) * ring.R),
-        e0: new THREE.Vector3(Math.cos(a0) * ring.R, 0, Math.sin(a0) * ring.R), e1: new THREE.Vector3(Math.cos(a1) * ring.R, 0, Math.sin(a1) * ring.R) };
-      seg.mid.y = heightAt(seg.mid.x, seg.mid.z);
+  // wall lines across the valley, four on each side of the keep (index = line * 2 + east)
+  CFG.wallX.forEach((X, k) => {
+    for (const side of [-1, 1]) {
+      const mid = new THREE.Vector3(side * X, 0, 0); mid.y = heightAt(mid.x, 0);
+      const seg = { ring: k, side, X, tier: 0, hp: 0, mesh: null, light: null, mid, pos: new THREE.Vector3(side * (X - 1.2), mid.y, 0) };
       G.walls.push(seg); setWallTier(seg, 0);
     }
   });
 
-  // plots
+  // building plots along both verges of the road, between the wall lines
   const plotSpots = [];
-  for (let k = 0; k < 4; k++) plotSpots.push([9, k / 4 * TAU + TAU / 8]);
-  for (let k = 0; k < 6; k++) plotSpots.push([21, k / 6 * TAU + 0.25]);
-  for (let k = 0; k < 4; k++) { let a = base + TAU / 6 + k * TAU / 4; plotSpots.push([37, a]); }
-  for (const [r, a] of plotSpots) {
-    const pos = new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r); pos.y = heightAt(pos.x, pos.z);
+  for (const side of [-1, 1]) for (const [x, z] of [[9, 7], [9, -7], [20, 7], [26, -7], [39, 7], [47, -7], [62, -7], [71, 7]]) plotSpots.push([side * x, side * z]);
+  for (const [x, z] of plotSpots) {
+    const pos = new THREE.Vector3(x, 0, z); pos.y = heightAt(pos.x, pos.z);
     const pad = mesh(GEO.plot, M.boneDim, pos.x, pos.y + 0.02, pos.z); world.add(pad);
     G.plots.push({ pos, kind: null, level: 0, pad, mesh: null, light: null, archer: null });
   }
 
-  // forests and rocks (instanced)
+  // forests (instanced): the wild ends of the valley beyond the last wall, the cliff tops, a few dead trees in town
   const trees = [];
-  for (let c = 0; c < 7; c++) {
-    let a = rng() * TAU;
-    if (G.portals.some(p => Math.abs(angDiff(a, p.angle)) < 0.3)) a += 0.6;
-    const r = 36 + rng() * 22, cx = Math.cos(a) * r, cz = Math.sin(a) * r, n = 10 + Math.floor(rng() * 14);
-    for (let t = 0; t < n; t++) {
-      const x = cx + (rng() - 0.5) * 14, z = cz + (rng() - 0.5) * 14, d = Math.hypot(x, z);
-      if (d > CFG.islandR - 8 || d < CFG.R2 + 4) continue;
-      if (G.plots.some(p => hdist(p.pos, { x, z }) < 4)) continue;
-      if (G.portals.some(p => hdist(p.pos, { x, z }) < 6)) continue;
-      trees.push({ x, z, s: 0.7 + rng() * 0.8, dead: rng() < 0.35, rot: rng() * TAU });
-    }
+  const clearOf = (x, z) => !G.plots.some(p => hdist(p.pos, { x, z }) < 4) && !G.portals.some(p => hdist(p.pos, { x, z }) < 7)
+    && !G.walls.some(w => Math.abs(x - w.side * w.X) < 2.5);
+  for (const side of [-1, 1]) for (let t = 0; t < 70; t++) {
+    const x = side * (86 + rng() * 46), z = (rng() - 0.5) * 2 * CFG.halfW;
+    if (Math.abs(z - 0.8 * Math.sin(x * 0.045)) < 2.6 || !clearOf(x, z)) continue;   // keep the road open
+    trees.push({ x, z, s: 0.7 + rng() * 0.8, dead: rng() < 0.3, rot: rng() * TAU });
   }
-  for (let t = 0; t < 26; t++) { const a = rng() * TAU, r = CFG.R1 + 2 + rng() * 6; if (rng() < 0.5) continue; trees.push({ x: Math.cos(a) * r * 1.6, z: Math.sin(a) * r * 1.6, s: 0.6 + rng() * 0.4, dead: true, rot: rng() * TAU }); }
+  for (let t = 0; t < 320; t++) {
+    const x = (rng() * 2 - 1) * (CFG.L + 10), z = (rng() < 0.5 ? -1 : 1) * (12 + rng() * 30);
+    trees.push({ x, z, s: 0.8 + rng() * 0.9, dead: rng() < 0.25, rot: rng() * TAU });
+  }
+  for (let t = 0; t < 30; t++) {
+    const x = (rng() * 2 - 1) * 80, z = (rng() < 0.5 ? -1 : 1) * (9.5 + rng() * 1.5);
+    if (clearOf(x, z)) trees.push({ x, z, s: 0.6 + rng() * 0.4, dead: true, rot: rng() * TAU });
+  }
   const dummy = new THREE.Object3D();
   const live = trees.filter(t => !t.dead), dead = trees.filter(t => t.dead);
   const rockList = [];
-  for (let i = 0; i < 40; i++) { const a = rng() * TAU, r = 12 + rng() * 50; rockList.push({ x: Math.cos(a) * r, z: Math.sin(a) * r, rx: rng() * 0.6, ry: rng() * TAU, s: 0.5 + rng() * 1.0, sy: 0.6 + rng() * 0.6 }); }
+  for (let i = 0; i < 70; i++) { const x = (rng() * 2 - 1) * CFG.L, z = (rng() < 0.5 ? -1 : 1) * (7 + rng() * 7); rockList.push({ x, z, rx: rng() * 0.6, ry: rng() * TAU, s: 0.5 + rng() * 1.2, sy: 0.6 + rng() * 0.6 }); }
   if (assetsReady) {
     const placeTree = (d, t) => { d.position.set(t.x, heightAt(t.x, t.z) - 0.1, t.z); d.rotation.set(0, t.rot, 0); d.scale.setScalar(t.s); };
     instanceAsset('tree_pine', live, placeTree, world);
@@ -934,7 +929,7 @@ function buildWorld(seed) {
   dead.forEach((t, i) => { const y = heightAt(t.x, t.z); for (let b = 0; b < 3; b++) { dummy.position.set(t.x + Math.cos(t.rot + b * 2.1) * 0.5 * t.s, y + (2.8 + b * 0.5) * t.s, t.z + Math.sin(t.rot + b * 2.1) * 0.5 * t.s); dummy.rotation.set(Math.sin(t.rot + b * 2.1) * 0.9, 0, -Math.cos(t.rot + b * 2.1) * 0.9); dummy.scale.setScalar(t.s); dummy.updateMatrix(); branches.setMatrixAt(i * 3 + b, dummy.matrix); } });
   world.add(trunks, canopies, branches);
   const rocks = new THREE.InstancedMesh(GEO.rock, M.stoneDark, 40);
-  for (let i = 0; i < 40; i++) { const a = rng() * TAU, r = 12 + rng() * 50, x = Math.cos(a) * r, z = Math.sin(a) * r; dummy.position.set(x, heightAt(x, z), z); dummy.rotation.set(rng() * 3, rng() * 3, 0); dummy.scale.set(0.5 + rng() * 1.2, 0.4 + rng() * 0.8, 0.5 + rng() * 1.2); dummy.updateMatrix(); rocks.setMatrixAt(i, dummy.matrix); }
+  for (let i = 0; i < 40; i++) { const x = (rng() * 2 - 1) * CFG.L, z = (rng() < 0.5 ? -1 : 1) * (7 + rng() * 7); dummy.position.set(x, heightAt(x, z), z); dummy.rotation.set(rng() * 3, rng() * 3, 0); dummy.scale.set(0.5 + rng() * 1.2, 0.4 + rng() * 0.8, 0.5 + rng() * 1.2); dummy.updateMatrix(); rocks.setMatrixAt(i, dummy.matrix); }
   world.add(rocks);
   G.rng = rng;
 }
@@ -944,7 +939,7 @@ function setWallTier(seg, tier) {
   seg.tier = tier; seg.hp = CFG.wallHp[tier];
   seg.mesh = buildWallMesh(seg, tier); G.world.add(seg.mesh);
   if (seg.light) { seg.light.alive = false; G.lights.splice(G.lights.indexOf(seg.light), 1); seg.light = null; }
-  if (tier >= 2) { const p = seg.mid.clone(); p.y += 3.6; p.multiplyScalar(1); p.x *= (seg.R - 0.5) / seg.R; p.z *= (seg.R - 0.5) / seg.R; seg.light = addLight(p, 6, 0xff9a48, 7, 0.25); }
+  if (tier >= 2) seg.light = addLight(new THREE.Vector3(seg.side * (seg.X - 0.6), seg.mid.y + 3.6, 0), 7, 0xff9a48, 7, 0.25);
 }
 function setPlot(plot, kind, level) {
   if (plot.mesh) G.world.remove(plot.mesh);
@@ -1099,15 +1094,15 @@ function makePlayer(i, total) {
   const vm = buildViewModel(); cam.add(vm);
   const body = buildPlayerBody(i); G.world.add(body);
   const light = new THREE.PointLight(i === 0 ? 0xffa050 : 0xffc888, 0, 15, 1.5); scene.add(light);
-  const ang = (i === 0 ? 0.0 : Math.PI) + 0.4;
+  const side = i === 0 ? -1 : 1;
   const p = {
     id: i, cam, vm, body, light, inp: new InputState(),
-    pos: new THREE.Vector3(Math.cos(ang) * 7, 0, Math.sin(ang) * 7), yaw: 0, pitch: -0.05,
+    pos: new THREE.Vector3(side * 7, 0, 2), yaw: 0, pitch: -0.05,
     coins: total === 1 ? 9 : 6, fuel: 1, stamina: 1, state: 'alive', carryCrown: -1,
     sel: 0, pay: null, tossT: 0, flareT: 0, hurtT: 0, bobT: 0, target: null, ghost: null, ghostKey: '', rallyOn: false, msgT: 0,
     hud: null, lastHud: {},
   };
-  p.yaw = Math.atan2(p.pos.x, p.pos.z) + Math.PI * 0; // face outward from keep
+  p.yaw = side > 0 ? -Math.PI / 2 : Math.PI / 2; // face outward along the valley
   return p;
 }
 
@@ -1120,7 +1115,7 @@ hudRoot.addEventListener('pointerdown', e => {
 function makeHud(p) {
   const el = document.createElement('div'); el.className = 'vh';
   el.innerHTML = `<div class="tl"><div class="purse">${'<i></i>'.repeat(CFG.cap)}</div><div class="fuel">${ICON.lantern}<div class="bar"><i></i></div></div><div class="state"></div></div>
-    <canvas class="dial" width="112" height="112"></canvas><canvas class="mini" width="300" height="300"></canvas>
+    <canvas class="dial" width="112" height="112"></canvas><canvas class="mini" width="600" height="120"></canvas>
     <div class="cross"></div><div class="wheel"></div><div class="pips"></div>`;
   hudRoot.appendChild(el);
   p.hud = { el, coins: [...el.querySelectorAll('.purse i')], fuel: el.querySelector('.fuel .bar i'), state: el.querySelector('.state'), wheel: el.querySelector('.wheel'), pips: el.querySelector('.pips'), dial: el.querySelector('.dial').getContext('2d'), mini: el.querySelector('.mini').getContext('2d'), cross: el.querySelector('.cross') };
@@ -1177,39 +1172,29 @@ function drawDial(c) {
   for (let i = 0; i < Math.min(G.night, 20); i++) { const ang = start + i / 20 * TAU; c.fillRect(56 + Math.cos(ang) * 30 - 1.5, 56 + Math.sin(ang) * 30 - 1.5, 3, 3); }
 }
 function drawMini(c, p) {
-  const W = 300, s = W / 2 / (CFG.islandR + 4), cx = W / 2, cy = W / 2;
-  c.clearRect(0, 0, W, W);
-  const X = x => cx + x * s, Y = z => cy + z * s;
-  c.fillStyle = 'rgba(11,10,12,.72)'; c.beginPath(); c.arc(cx, cy, W / 2 - 2, 0, TAU); c.fill();
-  c.strokeStyle = 'rgba(221,211,191,.25)'; c.lineWidth = 2; c.beginPath(); c.arc(cx, cy, CFG.islandR * s, 0, TAU); c.stroke();
-  // attacked sectors
-  const sect = new Array(16).fill(0);
-  for (const e of G.enemies) if (!e.dead) sect[Math.floor(angNorm(Math.atan2(e.pos.z, e.pos.x)) / TAU * 16) % 16]++;
-  c.lineWidth = 10;
-  sect.forEach((n, i) => { if (!n) return; c.strokeStyle = `rgba(208,57,43,${Math.min(0.95, 0.35 + n * 0.12)})`; c.beginPath(); c.arc(cx, cy, W / 2 - 8, i / 16 * TAU, (i + 1) / 16 * TAU); c.stroke(); });
-  // walls
-  c.lineWidth = 5;
+  // A strip map of the valley: west on the left, east on the right, keep in the middle.
+  const W = c.canvas.width, H = c.canvas.height, sx = (W - 24) / (2 * CFG.L), sz = (H - 24) / (2 * CFG.halfW);
+  const X = x => W / 2 + x * sx, Y = z => H / 2 + z * sz;
+  c.clearRect(0, 0, W, H);
+  c.fillStyle = 'rgba(11,10,12,.72)'; c.beginPath(); c.roundRect(0, 0, W, H, 18); c.fill();
+  c.fillStyle = 'rgba(221,211,191,.07)'; c.fillRect(X(-CFG.L + 4), Y(-CFG.halfW), (2 * CFG.L - 8) * sx, 2 * CFG.halfW * sz);
+  for (const L of G.lights) if (L.alive && L.radius > 6) { c.fillStyle = 'rgba(255,160,72,.12)'; c.beginPath(); c.arc(X(L.pos.x), Y(L.pos.z), L.radius * sx, 0, TAU); c.fill(); }
   for (const w of G.walls) {
-    if (w.tier === 0) { c.strokeStyle = 'rgba(221,211,191,.12)'; c.lineWidth = 2; }
-    else { c.strokeStyle = ['', '#8a6a44', '#b8b0a2', '#d0392b'][w.tier]; c.lineWidth = 5; }
-    c.beginPath(); c.arc(cx, cy, w.R * s, w.a0 + 0.02, w.a1 - 0.02); c.stroke();
+    c.fillStyle = w.tier === 0 ? 'rgba(221,211,191,.18)' : ['', '#8a6a44', '#b8b0a2', '#d0392b'][w.tier];
+    const t = w.tier === 0 ? 2 : 6; c.fillRect(X(w.side * w.X) - t / 2, Y(-CFG.halfW), t, 2 * CFG.halfW * sz);
   }
-  // lights
-  for (const L of G.lights) if (L.alive && L.radius > 6) { c.fillStyle = 'rgba(255,160,72,.12)'; c.beginPath(); c.arc(X(L.pos.x), Y(L.pos.z), L.radius * s, 0, TAU); c.fill(); }
-  for (const pl of G.plots) if (pl.kind) { c.fillStyle = pl.kind === 'brazier' ? '#ffa040' : pl.kind === 'tower' ? '#8a0e14' : '#9a907f'; c.fillRect(X(pl.pos.x) - 3, Y(pl.pos.z) - 3, 6, 6); }
-  for (const ch of G.chests) if (!ch.open) { c.fillStyle = '#c9a24a'; c.fillRect(X(ch.pos.x) - 3, Y(ch.pos.z) - 3, 6, 6); }
-  for (const po of G.portals) { c.fillStyle = po.alive ? '#d0392b' : '#3a3438'; c.beginPath(); c.arc(X(po.pos.x), Y(po.pos.z), 7, 0, TAU); c.fill(); if (po.alive) { c.strokeStyle = '#0b0a0c'; c.lineWidth = 2; c.stroke(); } }
-  // keep with hp ring
-  c.fillStyle = '#ddd3bf'; c.beginPath(); c.arc(cx, cy, 6, 0, TAU); c.fill();
-  c.strokeStyle = '#d0392b'; c.lineWidth = 3; c.beginPath(); c.arc(cx, cy, 10, -Math.PI / 2, -Math.PI / 2 + TAU * G.keep.hp / G.keep.max); c.stroke();
-  for (const cr of G.crowns) { c.fillStyle = '#e0b860'; c.beginPath(); c.arc(X(cr.pos.x), Y(cr.pos.z), 5, 0, TAU); c.fill(); }
-  // players
+  for (const pl of G.plots) if (pl.kind) { c.fillStyle = pl.kind === 'brazier' ? '#ffa040' : pl.kind === 'tower' ? '#8a0e14' : '#9a907f'; c.fillRect(X(pl.pos.x) - 5, Y(pl.pos.z) - 5, 10, 10); }
+  for (const ch of G.chests) if (!ch.open) { c.fillStyle = '#c9a24a'; c.fillRect(X(ch.pos.x) - 4, Y(ch.pos.z) - 4, 8, 8); }
+  for (const po of G.portals) { c.fillStyle = po.alive ? '#d0392b' : '#3a3438'; c.beginPath(); c.arc(X(po.pos.x), Y(po.pos.z), 11, 0, TAU); c.fill(); if (po.alive) { c.strokeStyle = '#0b0a0c'; c.lineWidth = 2; c.stroke(); } }
+  for (const e of G.enemies) if (!e.dead) { c.fillStyle = 'rgba(208,57,43,.9)'; c.beginPath(); c.arc(X(e.pos.x), Y(e.pos.z), e.type === 'breaker' ? 6 : 4, 0, TAU); c.fill(); }
+  c.fillStyle = '#ddd3bf'; c.beginPath(); c.arc(X(0), Y(0), 9, 0, TAU); c.fill();
+  c.strokeStyle = '#d0392b'; c.lineWidth = 4; c.beginPath(); c.arc(X(0), Y(0), 14, -Math.PI / 2, -Math.PI / 2 + TAU * G.keep.hp / G.keep.max); c.stroke();
+  for (const cr of G.crowns) { c.fillStyle = '#e0b860'; c.beginPath(); c.arc(X(cr.pos.x), Y(cr.pos.z), 7, 0, TAU); c.fill(); }
   for (const pl of G.players) {
-    const px = X(pl.pos.x), py = Y(pl.pos.z);
-    c.fillStyle = pl.state === 'alive' ? (pl.id === 0 ? '#d0392b' : '#ddd3bf') : '#6a6a7a';
-    c.save(); c.translate(px, py); c.rotate(-pl.yaw + Math.PI);
-    c.beginPath(); c.moveTo(0, 9); c.lineTo(6, -6); c.lineTo(0, -2); c.lineTo(-6, -6); c.closePath(); c.fill();
-    if (pl === p) { c.strokeStyle = '#0b0a0c'; c.lineWidth = 1.5; c.stroke(); }
+    c.fillStyle = pl.state === 'alive' ? (pl.id === 0 ? '#6a7fd0' : '#d0392b') : '#6a6a7a';
+    c.save(); c.translate(X(pl.pos.x), Y(pl.pos.z)); c.rotate(-pl.yaw + Math.PI);
+    c.beginPath(); c.moveTo(0, 13); c.lineTo(9, -9); c.lineTo(0, -3); c.lineTo(-9, -9); c.closePath(); c.fill();
+    if (pl === p) { c.strokeStyle = '#0b0a0c'; c.lineWidth = 2; c.stroke(); }
     c.restore();
   }
 }
@@ -1217,7 +1202,7 @@ function drawMini(c, p) {
 /* ---------------- interaction ---------------- */
 function interactables() {
   const list = [];
-  for (const w of G.walls) if (w.tier < 3) list.push({ kind: 'wall', ref: w, pos: w.mid });
+  for (const w of G.walls) if (w.tier < 3) list.push({ kind: 'wall', ref: w, pos: w.pos });
   for (const pl of G.plots) if (!pl.kind || (pl.kind === 'house' && pl.level < 2)) list.push({ kind: 'plot', ref: pl, pos: pl.pos });
   if (G.archers.length < CFG.maxArchers) list.push({ kind: 'recruit', ref: G.recruit, pos: G.recruit.pos });
   for (const po of G.portals) if (po.alive && !po.sealing) list.push({ kind: 'seal', ref: po, pos: po.pos });
@@ -1311,7 +1296,7 @@ function spawnChests() {
   for (let i = 0; i < 3; i++) {
     let pos;
     for (let tries = 0; tries < 20; tries++) {
-      const a = rng() * TAU, r = 36 + rng() * 20; pos = new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r);
+      const side = rng() < 0.5 ? -1 : 1; pos = new THREE.Vector3(side * (86 + rng() * 44), 0, (rng() - 0.5) * 2 * (CFG.halfW - 2));
       if (!G.portals.some(p => hdist(p.pos, pos) < 8)) break;
     }
     pos.y = heightAt(pos.x, pos.z);
@@ -1342,7 +1327,7 @@ function enterPhase(ph) {
     });
     if (G.blood) {
       for (let r = 0; r < 2; r++) {
-        const a = Math.random() * TAU, pos = new THREE.Vector3(Math.cos(a) * 60, 0, Math.sin(a) * 60); pos.y = heightAt(pos.x, pos.z);
+        const pos = new THREE.Vector3((r === 0 ? -1 : 1) * (CFG.L - 14), 0, (Math.random() - 0.5) * 8); pos.y = heightAt(pos.x, pos.z);
         for (let i = 0; i < 4 + G.night; i++) q.push({ t: 10 + Math.random() * 30, type: 'maskling', pos });
         setTimeout(() => hornFor(pos, 82), 3200 + r * 900);
       }
@@ -1419,11 +1404,13 @@ function isLit(pos) {
   for (const p of G.players) if (p.state === 'alive' && p.fuel > 0) { const r = p.flareT > 0 ? 10 : 7.5; if (hdist(pos, p.pos) < r) return true; }
   return false;
 }
-function wallBlock(r0, r1, ang) {
+function wallBlock(x0, x1) {
+  // a built wall line stops anything crossing it, coming in from its end of the valley or going back out
   for (const w of G.walls) {
     if (w.tier === 0) continue;
-    const inward = r0 > w.R + 0.6 && r1 <= w.R + 0.6, outward = r0 < w.R - 0.6 && r1 >= w.R - 0.6;
-    if ((inward || outward) && angNorm(ang - w.a0) < w.span) return w;
+    const a0 = w.side * x0, a1 = w.side * x1;
+    const inward = a0 > w.X + 0.6 && a1 <= w.X + 0.6, outward = a0 < w.X - 0.6 && a1 >= w.X - 0.6;
+    if (inward || outward) return w;
   }
   return null;
 }
@@ -1474,8 +1461,8 @@ function updatePlayer(p, dt) {
   const climb = heightAt(nx, nz) - heightAt(p.pos.x, p.pos.z);
   const f = climb > 0 ? clamp(1 - climb * 4, 0.55, 1) : 1;
   p.pos.x += (nx - p.pos.x) * f; p.pos.z += (nz - p.pos.z) * f;
+  p.pos.x = clamp(p.pos.x, -CFG.L + 4, CFG.L - 4); p.pos.z = clamp(p.pos.z, -CFG.halfW, CFG.halfW);
   const d = Math.hypot(p.pos.x, p.pos.z);
-  if (d > CFG.islandR - 4) { p.pos.x *= (CFG.islandR - 4) / d; p.pos.z *= (CFG.islandR - 4) / d; }
   if (d < 4.4 && d > 0.01) { p.pos.x *= 4.4 / d; p.pos.z *= 4.4 / d; }
   if (moving) p.bobT += dt * speed * 1.6;
   p.pos.y = heightAt(p.pos.x, p.pos.z);
@@ -1590,7 +1577,7 @@ function updateEnemies(dt) {
     let tgt = null, mode = 'keep';
     if (e.carry || e.flee) {
       let best = null, bd = 1e9; for (const po of alivePortals) { const d = hdist(po.pos, e.pos); if (d < bd) { bd = d; best = po; } }
-      if (!best) best = { pos: e.pos.clone().setLength(70) };
+      if (!best) best = { pos: new THREE.Vector3(Math.sign(e.pos.x || 1) * CFG.L, 0, e.pos.z) };
       tgt = best.pos; mode = 'flee';
       if (hdist(best.pos, e.pos) < 2.6) {
         if (e.carry && e.carry.crown !== undefined) loseCrown(e.carry.crown);
@@ -1626,14 +1613,13 @@ function updateEnemies(dt) {
     let sp = e.speed * (heightAt(e.pos.x + dx / d, e.pos.z + dz / d) > heightAt(e.pos.x, e.pos.z) + 0.2 ? 0.65 : 1);
     if (e.carry) sp *= 0.85;
     const nx = e.pos.x + dx / d * sp * dt, nz = e.pos.z + dz / d * sp * dt;
-    const r0 = Math.hypot(e.pos.x, e.pos.z), r1 = Math.hypot(nx, nz);
-    const w = wallBlock(r0, r1, Math.atan2(nz, nx));
+    const w = wallBlock(e.pos.x, nx);
     if (w) {
       if (e.atk <= 0) { damageWall(w, e.type === 'breaker' ? 3 : 1); e.atk = e.type === 'breaker' ? 1.8 : 1.0; }
       faceAndBob(e, dx, dz); e.mesh.position.y += Math.abs(Math.sin(e.bob)) * 0.15;
       continue;
     }
-    e.pos.x = nx; e.pos.z = nz;
+    e.pos.x = nx; e.pos.z = clamp(nz, -CFG.halfW, CFG.halfW);
     faceAndBob(e, dx, dz);
   }
   // separation
@@ -1668,15 +1654,15 @@ function hitPlayer(e, p) {
 }
 
 function updateArchers(dt) {
-  const outerBuilt = G.walls.filter(w => w.ring === 1 && w.tier > 0).length, innerBuilt = G.walls.filter(w => w.ring === 0 && w.tier > 0).length;
-  const guardR = outerBuilt >= 6 ? CFG.R2 - 2.5 : innerBuilt >= 3 ? CFG.R1 - 2.5 : 9;
+  const front = side => { let X = 0; for (const w of G.walls) if (w.side === side && w.tier > 0) X = Math.max(X, w.X); return X ? X - 2.5 : 9; };
+  const guardX = { '-1': front(-1), '1': front(1) };
   for (const a of G.archers) {
     let tx, tz, ty = null;
     const owner = G.players[a.owner];
     if (a.tower) { tx = a.tower.pos.x; tz = a.tower.pos.z; ty = a.tower.pos.y + 4.45; }
     else if (a.rally && owner && owner.state === 'alive') { const ang = a.guardAng + G.time * 0.1; tx = owner.pos.x + Math.cos(ang) * 2.6; tz = owner.pos.z + Math.sin(ang) * 2.6; }
-    else if (G.nightF > 0.2) { tx = Math.cos(a.guardAng) * guardR; tz = Math.sin(a.guardAng) * guardR; }
-    else { a.wander += dt * 0.05; tx = Math.cos(a.wander + a.guardAng) * 8.5; tz = Math.sin(a.wander + a.guardAng) * 8.5; }
+    else if (G.nightF > 0.2) { const side = Math.cos(a.guardAng) >= 0 ? 1 : -1; tx = side * guardX[side]; tz = Math.sin(a.guardAng) * 7; }
+    else { a.wander += dt * 0.05; tx = Math.cos(a.wander + a.guardAng) * 12; tz = Math.sin(a.wander + a.guardAng) * 6; }
     const dx = tx - a.pos.x, dz = tz - a.pos.z, d = Math.hypot(dx, dz);
     if (ty !== null && d < 0.5) { a.pos.x = tx; a.pos.z = tz; a.pos.y = ty; }
     else {
@@ -1899,7 +1885,7 @@ function endGame(win, why) {
   win ? AU.win() : AU.lose();
   document.getElementById('endTitle').textContent = win ? 'The island is free' : 'The crowns are lost';
   const nights = G.night, s = G.stats;
-  document.getElementById('endStats').textContent = (win ? `All three portals sealed after ${nights} night${nights === 1 ? '' : 's'}. ` : `${why} You held the ring for ${nights} night${nights === 1 ? '' : 's'} and sealed ${G.sealed} of 3 portals. `) + `${s.kills || 0} Hollow felled, ${s.spent || 0} coins spent, island ${G.seed}.`;
+  document.getElementById('endStats').textContent = (win ? `Both portals sealed after ${nights} night${nights === 1 ? '' : 's'}. ` : `${why} You held the valley for ${nights} night${nights === 1 ? '' : 's'} and sealed ${G.sealed} of 2 portals. `) + `${s.kills || 0} Hollow felled, ${s.spent || 0} coins spent, valley ${G.seed}.`;
   endEl.hidden = false; document.getElementById('btnResume').hidden = true;
 }
 function chosenSeed() { const v = parseInt(S.seed, 10); return Number.isFinite(v) ? v : Math.floor(Math.random() * 99999); }
@@ -1918,15 +1904,15 @@ $('optFov').oninput = e => { S.fov = +e.target.value; saveSettings(); if (G.play
 $('optSeed').oninput = e => { S.seed = e.target.value.replace(/\D/g, '').slice(0, 6); e.target.value = S.seed; saveSettings(); };
 $('btnDaily').onclick = () => { const d = new Date(); S.seed = String((d.getFullYear() * 372 + d.getMonth() * 31 + d.getDate()) % 99999); $('optSeed').value = S.seed; saveSettings(); };
 
-// Attract mode: the menu sits over a slowly circling view of a sample island at dusk.
+// Attract mode: the menu sits over a slow pan along a sample valley at night.
 function attract() {
   buildWorld(4242);
   G.players = [];
   const p = makePlayer(0, 1); p.src = 'none'; makeHud(p); p.hud.el.hidden = true; G.players.push(p);
-  [[0, 1], [1, 1], [2, 2], [8, 1], [9, 1], [10, 2], [11, 1]].forEach(([i, t]) => setWallTier(G.walls[i], t));
+  [[0, 1], [1, 1], [2, 2], [3, 1]].forEach(([i, t]) => setWallTier(G.walls[i], t));
   setPlot(G.plots[0], 'brazier', 1); setPlot(G.plots[4], 'tower', 1); setPlot(G.plots[1], 'house', 1);
   spawnArcher(0, new THREE.Vector3(8, 0, 2));
-  for (let i = 0; i < 5; i++) { const po = G.portals[i % 3]; const e = spawnEnemy('maskling', po.pos.clone().lerp(new THREE.Vector3(), 0.3 + i * 0.08)); }
+  for (let i = 0; i < 6; i++) { const po = G.portals[i % 2]; spawnEnemy('maskling', new THREE.Vector3(po.side * (40 + i * 6), 0, (i % 3 - 1) * 4)); }
   G.phase = 'night'; G.phaseT = 10; G.nightF = 1;
   layout();
 }
@@ -1939,9 +1925,9 @@ function frame(now) {
     for (const p of G.players) updateHud(p);
   } else if (G.mode === 'menu' && G.players[0] && G.players[0].src === 'none') {
     G.time += dt;
-    const p = G.players[0], a = G.time * 0.04;
-    p.pos.set(Math.cos(a) * 24, 0, Math.sin(a) * 24); p.pos.y = heightAt(p.pos.x, p.pos.z);
-    p.cam.position.set(p.pos.x, p.pos.y + 6, p.pos.z); p.cam.lookAt(0, 4, 0);
+    const p = G.players[0], a = G.time * 0.05;
+    p.pos.set(Math.sin(a) * 26, 0, 9); p.pos.y = heightAt(p.pos.x, p.pos.z);
+    p.cam.position.set(p.pos.x, p.pos.y + 5, p.pos.z); p.cam.lookAt(Math.sin(a) * 10, 3, -2);
     p.light.intensity = 0;
     p.vm.visible = false;
     for (const e of G.enemies) { e.bob += dt * 8; const d = Math.hypot(e.pos.x, e.pos.z); if (d > 30) { e.pos.multiplyScalar(1 - dt * 0.04); } faceAndBob(e, -e.pos.x, -e.pos.z); }
